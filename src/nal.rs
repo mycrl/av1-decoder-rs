@@ -1,3 +1,5 @@
+use bytes::Buf;
+
 #[derive(Debug)]
 pub enum H264DecodeErrorKind {
     UnSupports,
@@ -34,21 +36,21 @@ impl std::fmt::Display for H264DecodeError {
 
 // 2bit
 pub enum Nri {
-    Unimportant, // 0
-    Normal,      // 1
-    Priority,    // 2
-    Important,   // 3
+    Disposable, // 0
+    Low,      // 1
+    High,    // 2
+    Highest,   // 3
 }
 
 impl TryFrom<u8> for Nri {
     type Error = H264DecodeError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Ok(match (value & 0b00011111u8) >> 5 {
-            0 => Self::Unimportant,
-            1 => Self::Normal,
-            2 => Self::Priority,
-            3 => Self::Important,
+        Ok(match (value >> 5) & 3 {
+            0 => Self::Disposable,
+            1 => Self::Low,
+            2 => Self::High,
+            3 => Self::Highest,
             _ => {
                 return Err(H264DecodeError {
                     kind: H264DecodeErrorKind::UnSupports,
@@ -83,7 +85,7 @@ impl TryFrom<u8> for Nut {
     type Error = H264DecodeError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Ok(match (value & 0b11100000u8) >> 5 {
+        Ok(match value & 0x1F {
             1 => Self::Slice,
             2 => Self::DataPartitoningSliceA,
             3 => Self::DataPartitoningSliceB,
@@ -106,7 +108,7 @@ impl TryFrom<u8> for Nut {
     }
 }
 
-pub enum Rbsp {
+pub enum NaluPayload {
     SPS,
     SEI,
     PPS,
@@ -116,7 +118,7 @@ pub enum Rbsp {
     Delimiter,
 }
 
-impl<'a> TryFrom<&'a [u8]> for Rbsp {
+impl<'a> TryFrom<&'a [u8]> for NaluPayload {
     type Error = H264DecodeError;
 
     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
@@ -127,9 +129,21 @@ impl<'a> TryFrom<&'a [u8]> for Rbsp {
 }
 
 pub struct Nalu {
-    ref_idc: Nri,
-    unit_type: Nut,
-    rbsp: Rbsp,
+    pub ref_idc: Nri,
+    pub unit_type: Nut,
+    pub payload: NaluPayload,
+}
+
+impl TryFrom<&[u8]> for Nalu {
+    type Error = H264DecodeError;
+
+    fn try_from(mut value: &[u8]) -> Result<Self, Self::Error> {
+        let header = value.get_u8();
+        Ok(Self {
+            ref_idc: Nri::try_from(header)?,
+            unit_type: Nut::try_from(header)?,
+        })
+    }
 }
 
 pub enum H264Package {
