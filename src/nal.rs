@@ -1,20 +1,61 @@
+#[derive(Debug)]
+pub enum H264DecodeErrorKind {
+    UnSupports,
+}
+
+impl std::fmt::Display for H264DecodeErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(Debug)]
+pub struct H264DecodeError {
+    pub kind: H264DecodeErrorKind,
+    pub help: Option<&'static str>,
+}
+
+impl H264DecodeError {
+    fn default_from(kind: H264DecodeErrorKind) -> Self {
+        Self { kind, help: None }
+    }
+}
+
+impl std::error::Error for H264DecodeError {}
+
+impl std::fmt::Display for H264DecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.help {
+            Some(help) => write!(f, "{} - {}", self.kind, help),
+            None => write!(f, "{}", self.kind),
+        }
+    }
+}
+
 // 2bit
-pub enum NRI {
+pub enum Nri {
     Unimportant, // 0
     Normal,      // 1
     Priority,    // 2
     Important,   // 3
 }
 
-impl From<u8> for NRI {
-    fn from(value: u8) -> Self {
-        match value {
+impl TryFrom<u8> for Nri {
+    type Error = H264DecodeError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match (value & 0b00011111u8) >> 5 {
             0 => Self::Unimportant,
             1 => Self::Normal,
             2 => Self::Priority,
             3 => Self::Important,
-            _ => unreachable!("nri only supports the range 0-3!"),
-        }
+            _ => {
+                return Err(H264DecodeError {
+                    kind: H264DecodeErrorKind::UnSupports,
+                    help: Some("nri only supports the range 0-3!"),
+                })
+            }
+        })
     }
 }
 
@@ -23,7 +64,7 @@ impl From<u8> for NRI {
 // 0 - unused
 // 13-23 - reserve
 // 24-31 - unused
-pub enum NUT {
+pub enum Nut {
     Slice,                 // 1
     DataPartitoningSliceA, // 2
     DataPartitoningSliceB, // 3
@@ -38,9 +79,11 @@ pub enum NUT {
     Padding,               // 12
 }
 
-impl From<u8> for NUT {
-    fn from(value: u8) -> Self {
-        match value {
+impl TryFrom<u8> for Nut {
+    type Error = H264DecodeError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match (value & 0b11100000u8) >> 5 {
             1 => Self::Slice,
             2 => Self::DataPartitoningSliceA,
             3 => Self::DataPartitoningSliceB,
@@ -53,12 +96,17 @@ impl From<u8> for NUT {
             10 => Self::EndOfSequence,
             11 => Self::EndOfCodeStream,
             12 => Self::Padding,
-            _ => unreachable!("unused or reserved word!"),
-        }
+            _ => {
+                return Err(H264DecodeError {
+                    kind: H264DecodeErrorKind::UnSupports,
+                    help: Some("unused or reserved word!"),
+                })
+            }
+        })
     }
 }
 
-pub enum RBSP {
+pub enum Rbsp {
     SPS,
     SEI,
     PPS,
@@ -68,12 +116,23 @@ pub enum RBSP {
     Delimiter,
 }
 
-pub struct NALU {
-    ref_idc: NRI,
-    unit_type: NUT,
+impl<'a> TryFrom<&'a [u8]> for Rbsp {
+    type Error = H264DecodeError;
+
+    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+        
+
+        Ok(Self::SPS)
+    }
+}
+
+pub struct Nalu {
+    ref_idc: Nri,
+    unit_type: Nut,
+    rbsp: Rbsp,
 }
 
 pub enum H264Package {
-    Annexb(NALU),
-    RTP(NALU),
+    Annexb(Nalu),
+    RTP(Nalu),
 }
