@@ -1,45 +1,15 @@
-use bytes::Buf;
+mod sps;
 
-#[derive(Debug)]
-pub enum H264DecodeErrorKind {
-    UnSupports,
-}
+use crate::{H264DecodeError, H264DecodeErrorKind};
 
-impl std::fmt::Display for H264DecodeErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(Debug)]
-pub struct H264DecodeError {
-    pub kind: H264DecodeErrorKind,
-    pub help: Option<&'static str>,
-}
-
-impl H264DecodeError {
-    fn default_from(kind: H264DecodeErrorKind) -> Self {
-        Self { kind, help: None }
-    }
-}
-
-impl std::error::Error for H264DecodeError {}
-
-impl std::fmt::Display for H264DecodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.help {
-            Some(help) => write!(f, "{} - {}", self.kind, help),
-            None => write!(f, "{}", self.kind),
-        }
-    }
-}
+use self::sps::Sps;
 
 // 2bit
 pub enum Nri {
     Disposable, // 0
-    Low,      // 1
-    High,    // 2
-    Highest,   // 3
+    Low,        // 1
+    High,       // 2
+    Highest,    // 3
 }
 
 impl TryFrom<u8> for Nri {
@@ -109,7 +79,7 @@ impl TryFrom<u8> for Nut {
 }
 
 pub enum NaluPayload {
-    SPS,
+    SPS(Sps),
     SEI,
     PPS,
     ISlice,
@@ -118,15 +88,13 @@ pub enum NaluPayload {
     Delimiter,
 }
 
-impl<'a> TryFrom<&'a [u8]> for NaluPayload {
-    type Error = H264DecodeError;
+// impl<'a> TryFrom<&'a [u8]> for NaluPayload {
+//     type Error = H264DecodeError;
 
-    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-        
-
-        Ok(Self::SPS)
-    }
-}
+//     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+//         Ok(Self::SPS)
+//     }
+// }
 
 pub struct Nalu {
     pub ref_idc: Nri,
@@ -134,17 +102,17 @@ pub struct Nalu {
     pub payload: NaluPayload,
 }
 
-impl TryFrom<&[u8]> for Nalu {
-    type Error = H264DecodeError;
+// impl TryFrom<&[u8]> for Nalu {
+//     type Error = H264DecodeError;
 
-    fn try_from(mut value: &[u8]) -> Result<Self, Self::Error> {
-        let header = value.get_u8();
-        Ok(Self {
-            ref_idc: Nri::try_from(header)?,
-            unit_type: Nut::try_from(header)?,
-        })
-    }
-}
+//     fn try_from(mut value: &[u8]) -> Result<Self, Self::Error> {
+//         let header = value.get_u8();
+//         Ok(Self {
+//             ref_idc: Nri::try_from(header)?,
+//             unit_type: Nut::try_from(header)?,
+//         })
+//     }
+// }
 
 pub enum H264Package {
     Annexb(Nalu),
