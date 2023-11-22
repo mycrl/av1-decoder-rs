@@ -1,5 +1,3 @@
-use bytes::Buf;
-
 use crate::{utils::golomb::ExpGolombDecoder, H264DecodeError, H264DecodeErrorKind};
 
 pub enum Profile {
@@ -39,25 +37,26 @@ pub struct Sps {
     pub constraint_setx_flags: [u8; 5],
     pub level_idc: u8,
     pub seq_parameter_set_id: u8,
+    pub chroma_format_idc: u8,
 }
 
 impl TryFrom<&[u8]> for Sps {
     type Error = H264DecodeError;
 
-    fn try_from(mut value: &[u8]) -> Result<Self, Self::Error> {
-        let profile_idc = Profile::try_from(value.get_u8())?;
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let mut reader = ExpGolombDecoder::new(value, 0);
 
-        let constraint_setx_byte = [value.get_u8()];
+        let profile_idc = Profile::try_from(reader.next_bits(8) as u8)?;
+
         let mut constraint_setx_flags = [0u8; 5];
-        let mut reader = ExpGolombDecoder::new(&constraint_setx_byte);
-        constraint_setx_flags[0] = reader.get(1);
-        constraint_setx_flags[1] = reader.get(1);
-        constraint_setx_flags[2] = reader.get(1);
-        constraint_setx_flags[3] = reader.get(1);
-        constraint_setx_flags[4] = reader.get(1);
+        constraint_setx_flags[0] = reader.next_bit();
+        constraint_setx_flags[1] = reader.next_bit();
+        constraint_setx_flags[2] = reader.next_bit();
+        constraint_setx_flags[3] = reader.next_bit();
+        constraint_setx_flags[4] = reader.next_bit();
 
-        let level_idc = value.get_u8();
-        let seq_parameter_set_id = value.get_u8();
+        let level_idc = reader.next_bits(8) as u8;
+        let seq_parameter_set_id = reader.next_unsigned();
 
         Ok(Self {
             profile_idc,
