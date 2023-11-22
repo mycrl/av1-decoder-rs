@@ -38,6 +38,7 @@ pub struct Sps {
     pub level_idc: u8,
     pub seq_parameter_set_id: u8,
     pub chroma_format_idc: u8,
+    pub separate_colour_plane_flag: Option<u8>,
 }
 
 impl TryFrom<&[u8]> for Sps {
@@ -57,12 +58,39 @@ impl TryFrom<&[u8]> for Sps {
 
         let level_idc = reader.next_bits(8) as u8;
         let seq_parameter_set_id = reader.next_unsigned();
+        let chroma_format_idc = reader.next_unsigned();
+
+        let mut separate_colour_plane_flag = None;
+        if chroma_format_idc == 3 {
+            separate_colour_plane_flag = Some(reader.next_bits(1) as u8);
+        }
+
+        let bit_depth_luma_minus8 = reader.next_unsigned();
+        let bit_depth_chroma_minus8 = reader.next_unsigned();
+        let qpprime_y_zero_transform_bypass_flag = reader.next_bit();
+        let seq_scaling_matrix_present = reader.next_bit();
+
+        let mut seq_scaling_list_present_flag = [0u8; 12];
+        if seq_scaling_matrix_present > 0 {
+            for i in 0..if chroma_format_idc != 3 { 8 } else { 12 } {
+                seq_scaling_list_present_flag[i] = reader.next_bit();
+                if seq_scaling_list_present_flag[i] != 0 {
+                    if i < 6 {
+                        
+                    } else {
+
+                    }
+                }
+            }
+        }
 
         Ok(Self {
             profile_idc,
             constraint_setx_flags,
             level_idc,
             seq_parameter_set_id,
+            chroma_format_idc,
+            separate_colour_plane_flag,
         })
     }
 }
