@@ -23,7 +23,7 @@ impl<'a> ExpGolombDecoder<'a> {
     }
 
     #[inline]
-    pub fn next_bit(&mut self) -> u8 {
+    pub fn next_bit(&mut self) -> bool {
         self.iter.next().expect("have reached the end!")
     }
 
@@ -31,7 +31,7 @@ impl<'a> ExpGolombDecoder<'a> {
     fn count_leading_zeroes(&mut self) -> Option<u32> {
         let mut leading_zeros = 0;
         for bit in self.iter.by_ref() {
-            if bit == 0 {
+            if !bit {
                 leading_zeros += 1;
                 if leading_zeros > u64::BITS {
                     return None;
@@ -53,7 +53,7 @@ impl<'a> ExpGolombDecoder<'a> {
         if lz != 0 {
             for bit in self.iter.by_ref() {
                 y <<= 1;
-                y |= bit;
+                y |= bit as u8;
                 lz -= 1;
                 if lz == 0 {
                     break;
@@ -108,7 +108,7 @@ impl<'a> BitIterator<'a> {
 }
 
 impl<'a> core::iter::Iterator for BitIterator<'a> {
-    type Item = u8;
+    type Item = bool;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -124,6 +124,6 @@ impl<'a> core::iter::Iterator for BitIterator<'a> {
             }
         }
 
-        Some(bit >> shift)
+        Some((bit >> shift) == 1)
     }
 }
