@@ -87,6 +87,23 @@ impl TryFrom<u8> for Profile {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PicOrderCntBasedOnFrameNumbers {
+    pub delta_pic_order_always_zero_flag: bool,
+    pub offset_for_non_ref_pic: i8,
+    pub offset_for_top_to_bottom_field: i8,
+    pub num_ref_frames_in_pic_order_cnt_cycle: u8,
+    pub offset_for_ref_frame: Vec<i8>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PicOrderCnt {
+    /// `log2_max_pic_order_cnt_lsb_minus4`
+    None(u8),
+    OnFrameNumbers(PicOrderCntBasedOnFrameNumbers),
+    OnFieldNumbers,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PicOrderCntType {
     None,
@@ -107,6 +124,21 @@ impl TryFrom<u8> for PicOrderCntType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameMbsOnly {
+    FrameMode,
+    /// `mb_adaptive_frame_field_flag`
+    AdaptiveFrameFieldMode(bool),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FrameCropping {
+    pub left_offset: u8,
+    pub right_offset: u8,
+    pub top_offset: u8,
+    pub bottom_offset: u8,
+}
+
 #[derive(Debug, Clone)]
 pub struct Sps {
     pub profile_idc: Profile,
@@ -120,25 +152,14 @@ pub struct Sps {
     pub qpprime_y_zero_transform_bypass_flag: bool,
     pub seq_scaling_matrix_present_flag: bool,
     pub log2_max_frame_num_minus4: u8,
-    pub pic_order_cnt_type: PicOrderCntType,
-    pub log2_max_pic_order_cnt_lsb_minus4: Option<u8>,
-    pub delta_pic_order_always_zero_flag: Option<bool>,
-    pub offset_for_non_ref_pic: Option<i8>,
-    pub offset_for_top_to_bottom_field: Option<i8>,
-    pub num_ref_frames_in_pic_order_cnt_cycle: Option<u8>,
-    pub offset_for_ref_frame: Vec<i8>,
+    pub pic_order_cnt: PicOrderCnt,
     pub max_num_ref_frames: u8,
     pub gaps_in_frame_num_value_allowed_flag: bool,
     pub pic_width_in_mbs_minus1: u8,
     pub pic_height_in_map_units_minus1: u8,
-    pub frame_mbs_only_flag: bool,
-    pub mb_adaptive_frame_field_flag: Option<bool>,
+    pub frame_mbs_only: FrameMbsOnly,
     pub direct_8x8_inference_flag: bool,
-    pub frame_cropping_flag: bool,
-    pub frame_crop_left_offset: Option<u8>,
-    pub frame_crop_right_offset: Option<u8>,
-    pub frame_crop_top_offset: Option<u8>,
-    pub frame_crop_bottom_offset: Option<u8>,
+    pub frame_cropping: Option<FrameCropping>,
     pub vui_parameters_present_flag: bool,
 }
 
@@ -204,45 +225,48 @@ impl TryFrom<&[u8]> for Sps {
 
         let log2_max_frame_num_minus4 = reader.next_unsigned();
         let pic_order_cnt_type = PicOrderCntType::try_from(reader.next_unsigned())?;
+        let pic_order_cnt = match pic_order_cnt_type {
+            PicOrderCntType::OnFieldNumbers => PicOrderCnt::OnFieldNumbers,
+            PicOrderCntType::None => PicOrderCnt::None(reader.next_unsigned()),
+            PicOrderCntType::OnFrameNumbers => {
+                let mut ret = PicOrderCntBasedOnFrameNumbers {
+                    delta_pic_order_always_zero_flag: reader.next_bit(),
+                    offset_for_non_ref_pic: reader.next_signed(),
+                    offset_for_top_to_bottom_field: reader.next_signed(),
+                    num_ref_frames_in_pic_order_cnt_cycle: reader.next_unsigned(),
+                    offset_for_ref_frame: vec![],
+                };
 
-        let mut offset_for_ref_frame = vec![];
-        let mut num_ref_frames_in_pic_order_cnt_cycle = None;
-        let mut offset_for_top_to_bottom_field = None;
-        let mut offset_for_non_ref_pic = None;
-        let mut delta_pic_order_always_zero_flag = None;
-        let mut log2_max_pic_order_cnt_lsb_minus4 = None;
+                for _ in 0..ret.num_ref_frames_in_pic_order_cnt_cycle {
+                    ret.offset_for_ref_frame.push(reader.next_signed());
+                }
 
-        if pic_order_cnt_type == PicOrderCntType::None {
-            log2_max_pic_order_cnt_lsb_minus4 = Some(reader.next_unsigned());
-        } else if pic_order_cnt_type == PicOrderCntType::OnFrameNumbers {
-            delta_pic_order_always_zero_flag = Some(reader.next_bit());
-            offset_for_non_ref_pic = Some(reader.next_signed());
-            offset_for_top_to_bottom_field = Some(reader.next_signed());
-            num_ref_frames_in_pic_order_cnt_cycle = Some(reader.next_unsigned());
-
-            for _ in 0..num_ref_frames_in_pic_order_cnt_cycle.unwrap() {
-                offset_for_ref_frame.push(reader.next_signed());
+                PicOrderCnt::OnFrameNumbers(ret)
             }
-        }
+        };
 
         let max_num_ref_frames = reader.next_unsigned();
         let gaps_in_frame_num_value_allowed_flag = reader.next_bit();
         let pic_width_in_mbs_minus1 = reader.next_unsigned();
         let pic_height_in_map_units_minus1 = reader.next_unsigned();
-        let frame_mbs_only_flag = reader.next_bit();
 
-        let mut mb_adaptive_frame_field_flag = None;
+        let mut frame_mbs_only = FrameMbsOnly::FrameMode;
+        let frame_mbs_only_flag = reader.next_bit();
         if !frame_mbs_only_flag {
-            mb_adaptive_frame_field_flag = Some(reader.next_bit());
+            frame_mbs_only = FrameMbsOnly::AdaptiveFrameFieldMode(reader.next_bit());
         }
 
         let direct_8x8_inference_flag = reader.next_bit();
+
+        let mut frame_cropping = None;
         let frame_cropping_flag = reader.next_bit();
         if frame_cropping_flag {
-            let frame_crop_left_offset = reader.next_unsigned();
-            let frame_crop_right_offset = reader.next_unsigned();
-            let frame_crop_top_offset = reader.next_unsigned();
-            let frame_crop_bottom_offset = reader.next_unsigned();
+            frame_cropping = Some(FrameCropping {
+                left_offset: reader.next_unsigned(),
+                right_offset: reader.next_unsigned(),
+                top_offset: reader.next_unsigned(),
+                bottom_offset: reader.next_unsigned(),
+            });
         }
 
         let vui_parameters_present_flag = reader.next_bit();
@@ -260,25 +284,14 @@ impl TryFrom<&[u8]> for Sps {
             qpprime_y_zero_transform_bypass_flag,
             seq_scaling_matrix_present_flag,
             log2_max_frame_num_minus4,
-            pic_order_cnt_type,
-            log2_max_pic_order_cnt_lsb_minus4,
-            delta_pic_order_always_zero_flag,
-            offset_for_non_ref_pic,
-            offset_for_top_to_bottom_field,
-            num_ref_frames_in_pic_order_cnt_cycle,
-            offset_for_ref_frame,
+            pic_order_cnt,
             max_num_ref_frames,
             gaps_in_frame_num_value_allowed_flag,
             pic_height_in_map_units_minus1,
             pic_width_in_mbs_minus1,
-            frame_mbs_only_flag,
-            mb_adaptive_frame_field_flag,
+            frame_mbs_only,
             direct_8x8_inference_flag,
-            frame_cropping_flag,
-            frame_crop_bottom_offset,
-            frame_crop_left_offset,
-            frame_crop_right_offset,
-            frame_crop_top_offset,
+            frame_cropping,
             vui_parameters_present_flag,
         })
     }
