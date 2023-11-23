@@ -1,8 +1,20 @@
 mod sps;
 
-use crate::{H264DecodeError, H264DecodeErrorKind};
+use self::sps::{Sps, SpsDecodeError};
 
-use self::sps::Sps;
+#[derive(Debug)]
+pub enum NaluDecodeError {
+    UnSupports,
+    SpsDecodeError(SpsDecodeError),
+}
+
+impl std::error::Error for NaluDecodeError {}
+
+impl std::fmt::Display for NaluDecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
 
 // 2bit
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,7 +26,7 @@ pub enum Nri {
 }
 
 impl TryFrom<u8> for Nri {
-    type Error = H264DecodeError;
+    type Error = NaluDecodeError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Ok(match (value >> 5) & 3 {
@@ -22,12 +34,7 @@ impl TryFrom<u8> for Nri {
             1 => Self::Low,
             2 => Self::High,
             3 => Self::Highest,
-            _ => {
-                return Err(H264DecodeError {
-                    kind: H264DecodeErrorKind::UnSupports,
-                    help: Some("nri only supports the range 0-3!"),
-                })
-            }
+            _ => return Err(NaluDecodeError::UnSupports),
         })
     }
 }
@@ -54,7 +61,7 @@ pub enum Nut {
 }
 
 impl TryFrom<u8> for Nut {
-    type Error = H264DecodeError;
+    type Error = NaluDecodeError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Ok(match value & 0x1F {
@@ -70,67 +77,63 @@ impl TryFrom<u8> for Nut {
             10 => Self::EndOfSequence,
             11 => Self::EndOfCodeStream,
             12 => Self::Padding,
-            _ => {
-                return Err(H264DecodeError {
-                    kind: H264DecodeErrorKind::UnSupports,
-                    help: Some("unused or reserved word!"),
-                })
-            }
+            _ => return Err(NaluDecodeError::UnSupports),
         })
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum NaluPayload {
+pub enum Nalunit {
     SPS(Sps),
-    SEI,
-    PPS,
-    ISlice,
-    BSlice,
-    PSlice,
-    Delimiter,
+    // SEI,
+    // PPS,
+    // ISlice,
+    // BSlice,
+    // PSlice,
+    // Delimiter,
 }
 
-// impl<'a> TryFrom<&'a [u8]> for NaluPayload {
-//     type Error = H264DecodeError;
-
-//     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-//         Ok(Self::SPS)
-//     }
-// }
-
+#[derive(Debug, Clone)]
 pub struct Nalu {
     pub ref_idc: Nri,
-    pub unit_type: Nut,
-    pub payload: NaluPayload,
+    pub unit: Nalunit,
 }
 
-// impl TryFrom<&[u8]> for Nalu {
-//     type Error = H264DecodeError;
+impl TryFrom<&[u8]> for Nalu {
+    type Error = NaluDecodeError;
 
-//     fn try_from(mut value: &[u8]) -> Result<Self, Self::Error> {
-//         let header = value.get_u8();
-//         Ok(Self {
-//             ref_idc: Nri::try_from(header)?,
-//             unit_type: Nut::try_from(header)?,
-//         })
-//     }
-// }
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let header = value[0];
+        Ok(Self {
+            ref_idc: Nri::try_from(header)?,
+            unit: match Nut::try_from(header)? {
+                Nut::SPS => Nalunit::SPS(
+                    Sps::try_from(&value[1..]).map_err(|e| NaluDecodeError::SpsDecodeError(e))?,
+                ),
+                _ => todo!(),
+            },
+        })
+    }
+}
 
 pub enum H264Package {
     Annexb(Nalu),
     RTP(Nalu),
 }
 
+#[cfg(test)]
 mod tests {
-    const SPS_NALU_BYTES: [u8; 64] = [
-        0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x28, 0xAC, 0xD9, 0x40, 0x78, 0x02, 0x27, 0xE5,
-        0x9A, 0x80, 0x80, 0x80, 0xA0, 0x00, 0x00, 0x7D, 0x20, 0x00, 0x1D, 0x4C, 0x01, 0xE3, 0x06,
-        0x32, 0xC0, 0x00, 0x00, 0x00, 0x01, 0x68, 0xEB, 0xE3, 0xCB, 0x22, 0xC0, 0x00, 0x00, 0x01,
-        0x06, 0x05, 0xFF, 0xFF, 0xAB, 0xDC, 0x45, 0xE9, 0xBD, 0xE6, 0xD9, 0x48, 0xB7, 0x96, 0x2C,
-        0xD8, 0x20, 0xD9, 0x23,
+    use super::Nalu;
+
+    const SPS_NALU_BYTES: [u8; 34] = [
+        0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x1F, 0xAC, 0xD9, 0x40, 0x50, 
+        0x05, 0xBA, 0x6A, 0x02, 0x02, 0x03, 0x6E, 0x00, 0x00, 0x01, 0x00, 0x02, 
+        0x00, 0x00, 0x01, 0x00, 0x60, 0x1E, 0x30, 0x63, 0x2C, 0x00
     ];
 
     #[test]
-    fn parse_sps_nalu() {}
+    fn parse_sps_nalu() {
+        let nalu = Nalu::try_from(&SPS_NALU_BYTES[4..]).unwrap();
+        println!("{:?}", nalu);
+    }
 }

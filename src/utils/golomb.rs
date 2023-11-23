@@ -13,17 +13,17 @@ impl<'a> ExpGolombDecoder<'a> {
     }
 
     #[inline]
-    pub fn next_bits(&mut self, count: usize) -> usize {
+    pub fn get_bits(&mut self, count: usize) -> u32 {
         let mut ret = 0;
         for i in 0..count {
-            ret |= (self.next_bit() as usize) << (count - i - 1);
+            ret |= (self.get_bit() as u32) << (count - i - 1);
         }
 
         ret
     }
 
     #[inline]
-    pub fn next_bit(&mut self) -> bool {
+    pub fn get_bit(&mut self) -> bool {
         self.iter.next().expect("have reached the end!")
     }
 
@@ -45,15 +45,15 @@ impl<'a> ExpGolombDecoder<'a> {
     }
 
     #[inline]
-    pub fn next_unsigned(&mut self) -> u8 {
+    pub fn get_unsigned(&mut self) -> usize {
         let mut lz = self.count_leading_zeroes().expect("have reached the end!");
-        let x = (1u64.wrapping_shl(lz) - 1) as u8;
+        let x = (1u64.wrapping_shl(lz) - 1) as usize;
         let mut y = 0;
 
         if lz != 0 {
             for bit in self.iter.by_ref() {
                 y <<= 1;
-                y |= bit as u8;
+                y |= bit as usize;
                 lz -= 1;
                 if lz == 0 {
                     break;
@@ -69,10 +69,10 @@ impl<'a> ExpGolombDecoder<'a> {
     }
 
     #[inline]
-    pub fn next_signed(&mut self) -> i8 {
-        let k = self.next_unsigned();
+    pub fn get_signed(&mut self) -> isize {
+        let k = self.get_unsigned();
         let factor = if k % 2 == 0 { -1 } else { 1 };
-        factor * (k / 2 + k % 2) as i8
+        factor * (k / 2 + k % 2) as isize
     }
 
     #[inline]
@@ -125,5 +125,40 @@ impl<'a> core::iter::Iterator for BitIterator<'a> {
         }
 
         Some((bit >> shift) == 1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shifted_data() {
+        let data: [(&[u8], u32, usize); 8] = [
+            (&[0b01000000], 0, 1),
+            (&[0b00100000], 1, 1),
+            (&[0b00010000], 2, 1),
+            (&[0b00001000], 3, 1),
+            (&[0b00000100], 4, 1),
+            (&[0b00000010], 5, 1),
+            (&[0b00000001, 0], 6, 1),
+            (&[0b00000000, 0b10000000], 7, 1),
+        ];
+
+        for (buf, start, ans) in data {
+            let mut reader = ExpGolombDecoder::new(buf, start);
+            let res = reader.get_unsigned();
+            assert_eq!(res, ans);
+        }
+    }
+
+    #[test]
+    fn mix_next_unsigned_with_next_bit() {
+        let data = [0b01010101];
+        let mut reader = ExpGolombDecoder::new(&data, 0);
+        assert_eq!(reader.get_unsigned(), 1);
+        assert_eq!(reader.get_bit(), true);
+        assert_eq!(reader.get_unsigned(), 1);
+        assert_eq!(reader.get_bit(), true);
     }
 }
