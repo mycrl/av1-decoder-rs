@@ -1,4 +1,5 @@
-mod vui;
+pub mod hrd;
+pub mod vui;
 
 use crate::bitstream::{BitRead, Bits, ExpGolomb};
 
@@ -217,7 +218,8 @@ impl TryFrom<&mut Bits<'_>> for PicOrderCnt {
                 // num_ref_frames_in_pic_order_cnt_cycle 0 ue(v)
                 let num_ref_frames_in_pic_order_cnt_cycle = value.get_unsigned();
 
-                let mut offset_for_ref_frame = vec![];
+                let mut offset_for_ref_frame =
+                    Vec::with_capacity(num_ref_frames_in_pic_order_cnt_cycle);
                 for _ in 0..num_ref_frames_in_pic_order_cnt_cycle {
                     // offset_for_ref_frame[ i ] 0 se(v)
                     offset_for_ref_frame.push(value.get_signed());
@@ -553,12 +555,10 @@ impl Sps {
     }
 }
 
-impl TryFrom<&[u8]> for Sps {
+impl TryFrom<&mut Bits<'_>> for Sps {
     type Error = SpsDecodeError;
 
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let mut bits = Bits::new(value, 0);
-
+    fn try_from(bits: &mut Bits) -> Result<Self, Self::Error> {
         // profile_idc 0 u(8)
         let profile_idc = Profile::try_from(bits.get_bits(8) as u8)?;
         let constraint_setx_flags = [
@@ -625,13 +625,13 @@ impl TryFrom<&[u8]> for Sps {
                 if seq_scaling_list_present_flag[i] {
                     if i < 6 {
                         Self::read_scaling_list(
-                            &mut bits,
+                            bits,
                             &mut scaling_list_4x4[i],
                             &mut use_default_scaling_matrix_flag_4x4[i],
                         );
                     } else {
                         Self::read_scaling_list(
-                            &mut bits,
+                            bits,
                             &mut scaling_list_8x8[i - 6],
                             &mut use_default_scaling_matrix_flag_8x8[i],
                         )
@@ -644,7 +644,7 @@ impl TryFrom<&[u8]> for Sps {
         let log2_max_frame_num_minus4 = bits.get_unsigned();
 
         // pic_order_cnt_type 0 ue(v)
-        let pic_order_cnt = PicOrderCnt::try_from(&mut bits)?;
+        let pic_order_cnt = PicOrderCnt::try_from(bits.as_mut())?;
 
         // max_num_ref_frames 0 ue(v)
         let max_num_ref_frames = bits.get_unsigned();
@@ -692,7 +692,7 @@ impl TryFrom<&[u8]> for Sps {
         // vui_parameters_present_flag 0 u(1)
         let vui_parameters_present_flag = bits.get_bit();
         let vui = if vui_parameters_present_flag {
-            Some(Vui::try_from(&mut bits)?)
+            Some(Vui::try_from(bits)?)
         } else {
             None
         };

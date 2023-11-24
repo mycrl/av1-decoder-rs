@@ -1,14 +1,21 @@
+pub mod pps;
 pub mod sps;
 
-use self::sps::{Sps, SpsDecodeError};
+use crate::bitstream::{BitRead, Bits};
 
-#[derive(Debug)]
+use thiserror::Error;
+
+use self::{
+    pps::{Pps, PpsDecodeError},
+    sps::{Sps, SpsDecodeError},
+};
+
+#[derive(Error, Debug)]
 pub enum NaluDecodeError {
     UnSupports,
-    SpsDecodeError(SpsDecodeError),
+    SpsDecodeError(#[from] SpsDecodeError),
+    PpsDecodeError(#[from] PpsDecodeError),
 }
-
-impl std::error::Error for NaluDecodeError {}
 
 impl std::fmt::Display for NaluDecodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -19,10 +26,10 @@ impl std::fmt::Display for NaluDecodeError {
 // 2bit
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Nri {
-    Disposable, // 0
-    Low,        // 1
-    High,       // 2
-    Highest,    // 3
+    Disposable,
+    Low,
+    High,
+    Highest,
 }
 
 impl TryFrom<u8> for Nri {
@@ -46,18 +53,18 @@ impl TryFrom<u8> for Nri {
 // 24-31 - unused
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Nut {
-    Slice,                 // 1
-    DataPartitoningSliceA, // 2
-    DataPartitoningSliceB, // 3
-    DataPartitoningSliceC, // 4
-    IDRSlice,              // 5
-    SEI,                   // 6
-    SPS,                   // 7
-    PPS,                   // 8
-    Delimiter,             // 9
-    EndOfSequence,         // 10
-    EndOfCodeStream,       // 11
-    Padding,               // 12
+    Slice,
+    DataPartitoningSliceA,
+    DataPartitoningSliceB,
+    DataPartitoningSliceC,
+    IDRSlice,
+    SEI,
+    SPS,
+    PPS,
+    Delimiter,
+    EndOfSequence,
+    EndOfCodeStream,
+    Padding,
 }
 
 impl TryFrom<u8> for Nut {
@@ -84,9 +91,9 @@ impl TryFrom<u8> for Nut {
 
 #[derive(Debug, Clone)]
 pub enum Nalunit {
-    SPS(Sps),
+    Sps(Sps),
+    Pps(Pps),
     // SEI,
-    // PPS,
     // ISlice,
     // BSlice,
     // PSlice,
@@ -103,13 +110,14 @@ impl TryFrom<&[u8]> for Nalu {
     type Error = NaluDecodeError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let header = value[0];
+        let mut bits = Bits::new(value, 0);
+
+        let header = bits.get_bits(8) as u8;
         Ok(Self {
             ref_idc: Nri::try_from(header)?,
             unit: match Nut::try_from(header)? {
-                Nut::SPS => Nalunit::SPS(
-                    Sps::try_from(&value[1..]).map_err(|e| NaluDecodeError::SpsDecodeError(e))?,
-                ),
+                Nut::SPS => Nalunit::Sps(Sps::try_from(&mut bits)?),
+                Nut::PPS => Nalunit::Pps(Pps::try_from(&mut bits)?),
                 _ => todo!(),
             },
         })
