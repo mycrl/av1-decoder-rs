@@ -18,7 +18,7 @@
 
 ***
 
-This is an experimental project currently in progress. Its primary aim is functionality rather than performance superiority. The project is named 'eva,' after my ex-girlfriend's nickname. I love her very much, and to prevent constant thoughts about her while also enhancing my technical skills, I created this project.
+This is an experimental project currently in progress. Its primary aim is functionality rather than performance superiority. The project is named 'eva', after my ex-girlfriend's nickname. I love her very much, and to prevent constant thoughts about her while also enhancing my technical skills, I created this project.
 
 ***
 
