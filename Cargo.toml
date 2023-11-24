@@ -1,8 +1,6 @@
 [package]
-name = "h264-decoder-rs"
+name = "eva"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bitreader = "0.3.8"
-bytes = "1.5.0"

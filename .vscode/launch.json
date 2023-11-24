@@ -7,16 +7,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'h264-decoder-rs'",
+            "name": "Debug unit tests in library 'eva'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=h264-decoder-rs"
+                    "--package=eva"
                 ],
                 "filter": {
-                    "name": "h264-decoder-rs",
+                    "name": "eva",
                     "kind": "lib"
                 }
             },
@@ -26,15 +26,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'h264-decoder-rs'",
+            "name": "Debug executable 'eva'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=h264-decoder-rs",
-                    "--package=h264-decoder-rs"
+                    "--bin=eva",
+                    "--package=eva"
                 ],
                 "filter": {
-                    "name": "h264-decoder-rs",
+                    "name": "eva",
                     "kind": "bin"
                 }
             },
@@ -44,16 +44,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'h264-decoder-rs'",
+            "name": "Debug unit tests in executable 'eva'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=h264-decoder-rs",
-                    "--package=h264-decoder-rs"
+                    "--bin=eva",
+                    "--package=eva"
                 ],
                 "filter": {
-                    "name": "h264-decoder-rs",
+                    "name": "eva",
                     "kind": "bin"
                 }
             },

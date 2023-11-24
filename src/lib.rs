@@ -1,5 +1,10 @@
+mod bitstream;
 mod nal;
-mod utils;
+
+pub use nal::{
+    sps::{Sps, SpsDecodeError, SpsDecodeErrorKind},
+    Nalu, NaluDecodeError, Nalunit, Nri, Nut,
+};
 
 #[derive(Debug)]
 pub enum H264DecodeErrorKind {
@@ -17,12 +22,6 @@ impl std::fmt::Display for H264DecodeErrorKind {
 pub struct H264DecodeError {
     pub kind: H264DecodeErrorKind,
     pub help: Option<&'static str>,
-}
-
-impl H264DecodeError {
-    fn default_from(kind: H264DecodeErrorKind) -> Self {
-        Self { kind, help: None }
-    }
 }
 
 impl std::error::Error for H264DecodeError {}

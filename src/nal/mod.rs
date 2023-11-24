@@ -1,4 +1,4 @@
-mod sps;
+pub mod sps;
 
 use self::sps::{Sps, SpsDecodeError};
 
@@ -119,21 +119,4 @@ impl TryFrom<&[u8]> for Nalu {
 pub enum H264Package {
     Annexb(Nalu),
     RTP(Nalu),
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Nalu;
-
-    const SPS_NALU_BYTES: [u8; 34] = [
-        0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x00, 0x1F, 0xAC, 0xD9, 0x40, 0x50, 
-        0x05, 0xBA, 0x6A, 0x02, 0x02, 0x03, 0x6E, 0x00, 0x00, 0x01, 0x00, 0x02, 
-        0x00, 0x00, 0x01, 0x00, 0x60, 0x1E, 0x30, 0x63, 0x2C, 0x00
-    ];
-
-    #[test]
-    fn parse_sps_nalu() {
-        let nalu = Nalu::try_from(&SPS_NALU_BYTES[4..]).unwrap();
-        println!("{:?}", nalu);
-    }
 }
