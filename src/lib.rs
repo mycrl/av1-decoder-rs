@@ -1,36 +1,83 @@
 mod bitstream;
 mod nal;
 
+use bytes::BytesMut;
+use thiserror::Error;
 pub use nal::{
     sps::{Sps, SpsDecodeError, SpsDecodeErrorKind},
     Nalu, NaluDecodeError, Nalunit, Nri, Nut,
 };
 
-#[derive(Debug)]
-pub enum H264DecodeErrorKind {
-    UnSupports,
-    UnknownData,
+#[derive(Error, Debug)]
+pub enum H264DecodeError {
+    NaluDecodeError(#[from] NaluDecodeError),
 }
 
-impl std::fmt::Display for H264DecodeErrorKind {
+impl std::fmt::Display for H264DecodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self)
     }
 }
 
-#[derive(Debug)]
-pub struct H264DecodeError {
-    pub kind: H264DecodeErrorKind,
-    pub help: Option<&'static str>,
+pub struct H264Decoder {
+    bytes: BytesMut,
+    index: usize,
 }
 
-impl std::error::Error for H264DecodeError {}
+impl H264Decoder {
+    pub fn new() -> Self {
+        Self {
+            bytes: BytesMut::new(),
+            index: 0,
+        }
+    }
 
-impl std::fmt::Display for H264DecodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.help {
-            Some(help) => write!(f, "{} - {}", self.kind, help),
-            None => write!(f, "{}", self.kind),
+    pub fn parse_next(&mut self, buf: &[u8]) -> Result<Vec<Nalu>, H264DecodeError> {
+        self.bytes.extend_from_slice(buf);
+
+        let mut nalus = vec![];
+        if self.bytes.len() < 5 {
+            return Ok(vec![])
+        }
+
+        loop {
+            if self.index + 1 >= self.bytes.len() {
+                break;
+            }
+
+            if let Some(size) = Self::find_start_code(&self.bytes[self.index..]) {
+                let buf = self.bytes.split_to(self.index + size);
+                self.index = size;
+                if buf.len() > size {
+                    nalus.push(Nalu::try_from(&buf[..])?);
+                }
+            } else {
+                self.index += 1;
+            }
+        }
+
+        Ok(nalus)
+    }
+
+    fn find_start_code(buf: &[u8]) -> Option<usize> {
+        if buf.len() < 3 {
+            return None
+        }
+
+        // 0x000001
+        if buf[0] == 0 && buf[1] == 0 && buf[2] == 1 {
+            Some(3)
+        } else {
+            if buf.len() < 4 {
+                return None
+            }
+
+            // 0x00000001
+            if buf[0] == 0 && buf[1] == 0 && buf[2] == 0 && buf[3] == 1 {
+                Some(4)
+            } else {
+                None
+            }
         }
     }
 }

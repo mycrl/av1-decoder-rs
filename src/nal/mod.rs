@@ -123,8 +123,3 @@ impl TryFrom<&[u8]> for Nalu {
         })
     }
 }
-
-pub enum H264Package {
-    Annexb(Nalu),
-    RTP(Nalu),
-}
