@@ -1,7 +1,11 @@
 pub mod pps;
+pub mod slice;
 pub mod sps;
 
-use crate::bitstream::{BitRead, Bits};
+use crate::{
+    bitstream::{BitRead, Bits},
+    Session,
+};
 
 use thiserror::Error;
 
@@ -93,11 +97,6 @@ impl TryFrom<u8> for Nut {
 pub enum Nalunit {
     Sps(Sps),
     Pps(Pps),
-    // SEI,
-    // ISlice,
-    // BSlice,
-    // PSlice,
-    // Delimiter,
 }
 
 #[derive(Debug, Clone)]
@@ -106,20 +105,26 @@ pub struct Nalu {
     pub unit: Nalunit,
 }
 
-impl TryFrom<&[u8]> for Nalu {
-    type Error = NaluDecodeError;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+impl Nalu {
+    pub(crate) fn decode(session: &mut Session, value: &[u8]) -> Result<(), NaluDecodeError> {
         let mut bits = Bits::new(value, 0);
 
         let header = bits.get_bits(8) as u8;
-        Ok(Self {
-            ref_idc: Nri::try_from(header)?,
-            unit: match Nut::try_from(header)? {
-                Nut::SPS => Nalunit::Sps(Sps::try_from(&mut bits)?),
-                Nut::PPS => Nalunit::Pps(Pps::try_from(&mut bits)?),
-                _ => todo!(),
-            },
-        })
+        // let ref_idc = Nri::try_from(header)?;
+
+        match Nut::try_from(header)? {
+            Nut::SPS => {
+                let sps = Sps::try_from(&mut bits)?;
+                session.spss.insert(sps.seq_parameter_set_id, sps);
+            }
+            Nut::PPS => {
+                let pps = Pps::try_from(&mut bits)?;
+                session.ppss.insert(pps.pic_parameter_set_id, pps);
+            }
+            Nut::Slice => {}
+            _ => todo!(),
+        };
+
+        Ok(())
     }
 }

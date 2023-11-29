@@ -183,11 +183,11 @@ pub struct Pps {
     /// pic_parameter_set_id identifies the picture parameter set that is
     /// referred to in the slice header. The value of pic_parameter_set_id
     /// shall be in the range of 0 to 255, inclusive.
-    pub pic_parameter_set_id: u8,
+    pub pic_parameter_set_id: usize,
     /// seq_parameter_set_id refers to the active sequence parameter set. The
     /// value of seq_parameter_set_id shall be in the range of 0 to 31,
     /// inclusive.
-    pub seq_parameter_set_id: u8,
+    pub seq_parameter_set_id: usize,
     /// entropy_coding_mode_flag selects the entropy decoding method to be
     /// applied for the syntax elements for which two descriptors appear in
     /// the syntax tables as follows.
@@ -296,10 +296,10 @@ impl TryFrom<&mut Bits<'_>> for Pps {
 
     fn try_from(value: &mut Bits<'_>) -> Result<Self, Self::Error> {
         // pic_parameter_set_id 1 ue(v)
-        let pic_parameter_set_id = value.get_unsigned() as u8;
+        let pic_parameter_set_id = value.get_unsigned();
 
         // seq_parameter_set_id 1 ue(v)
-        let seq_parameter_set_id = value.get_unsigned() as u8;
+        let seq_parameter_set_id = value.get_unsigned();
 
         // entropy_coding_mode_flag 1 u(1)
         let entropy_coding_mode = value.get_bit();

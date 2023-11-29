@@ -1,12 +1,15 @@
 mod bitstream;
 mod nal;
 
+use std::collections::HashMap;
+
 use bytes::BytesMut;
-use thiserror::Error;
+use nal::pps::Pps;
 pub use nal::{
     sps::{Sps, SpsDecodeError, SpsDecodeErrorKind},
     Nalu, NaluDecodeError, Nalunit, Nri, Nut,
 };
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum H264DecodeError {
@@ -19,7 +22,14 @@ impl std::fmt::Display for H264DecodeError {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct Session {
+    pub spss: HashMap<usize, Sps>,
+    pub ppss: HashMap<usize, Pps>,
+}
+
 pub struct H264Decoder {
+    session: Session,
     bytes: BytesMut,
     index: usize,
 }
@@ -27,6 +37,7 @@ pub struct H264Decoder {
 impl H264Decoder {
     pub fn new() -> Self {
         Self {
+            session: Session::default(),
             bytes: BytesMut::new(),
             index: 0,
         }
@@ -37,7 +48,7 @@ impl H264Decoder {
 
         let mut nalus = vec![];
         if self.bytes.len() < 5 {
-            return Ok(vec![])
+            return Ok(vec![]);
         }
 
         loop {
@@ -49,7 +60,7 @@ impl H264Decoder {
                 let buf = self.bytes.split_to(self.index + size);
                 self.index = size;
                 if buf.len() > size {
-                    nalus.push(Nalu::try_from(&buf[..])?);
+                    // nalus.push(Nalu::try_from(&buf[..])?);
                 }
             } else {
                 self.index += 1;
@@ -61,7 +72,7 @@ impl H264Decoder {
 
     fn find_start_code(buf: &[u8]) -> Option<usize> {
         if buf.len() < 3 {
-            return None
+            return None;
         }
 
         // 0x000001
@@ -69,7 +80,7 @@ impl H264Decoder {
             Some(3)
         } else {
             if buf.len() < 4 {
-                return None
+                return None;
             }
 
             // 0x00000001

@@ -8,6 +8,7 @@ pub trait ExpGolomb {
     fn get_signed(&mut self) -> isize;
 }
 
+#[derive(Default)]
 pub struct Bits<'a> {
     buf: &'a [u8],
     index: usize,
