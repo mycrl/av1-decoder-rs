@@ -1,8 +1,9 @@
 mod buffer;
 mod obu;
 mod util;
+mod constants;
 
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicU16, AtomicUsize};
 
 pub use buffer::Buffer;
 pub use obu::{Obu, ObuHeader, ObuHeaderExtension, ObuKind};
@@ -26,7 +27,9 @@ pub struct Av1DecoderOptions {
     pub obu_size: Option<usize>,
 }
 
-pub struct Av1DecoderSession {
+pub struct Av1DecoderContext {
     pub options: Av1DecoderOptions,
-    pub operating_point_idc: AtomicBool,
+    pub operating_point_idc: AtomicU16,
+    pub operating_point: AtomicUsize,
+    pub order_hint_bits: AtomicUsize,
 }

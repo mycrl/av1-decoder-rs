@@ -1,4 +1,4 @@
-use crate::{Av1DcodeError, Av1DecoderSession, Buffer};
+use crate::{util::EasyAtomic, Av1DcodeError, Av1DecoderContext, Buffer, constants::{SELECT_SCREEN_CONTENT_TOOLS, SELECT_INTEGER_MV}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SequenceProfile {
@@ -22,7 +22,7 @@ impl TryFrom<u8> for SequenceProfile {
 
 #[derive(Debug, Clone, Copy)]
 pub struct EqualPictureInterval {
-    pub num_ticks_per_picture_minus_1: u32,
+    pub num_ticks_per_picture: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -44,7 +44,7 @@ impl TimingInfo {
         let equal_picture_interval = if buf.get_bit() {
             Some(EqualPictureInterval {
                 // num_ticks_per_picture_minus_1 uvlc()
-                num_ticks_per_picture_minus_1: buf.get_uvlc(),
+                num_ticks_per_picture: buf.get_uvlc() + 1,
             })
         } else {
             None
@@ -60,37 +60,37 @@ impl TimingInfo {
 
 #[derive(Debug, Clone, Copy)]
 pub struct DecoderModelInfo {
-    pub buffer_delay_length_minus_1: u8,
+    pub buffer_delay_length: u8,
     pub num_units_in_decoding_tick: u32,
-    pub buffer_removal_time_length_minus_1: u8,
-    pub frame_presentation_time_length_minus_1: u8,
+    pub buffer_removal_time_length: u8,
+    pub frame_presentation_time_length: u8,
 }
 
 impl DecoderModelInfo {
     pub fn decode(buf: &mut Buffer<'_>) -> Self {
         Self {
             // buffer_delay_length_minus_1 f(5)
-            buffer_delay_length_minus_1: buf.get_bits(5) as u8,
+            buffer_delay_length: buf.get_bits(5) as u8 + 1,
             // num_units_in_decoding_tick f(32)
             num_units_in_decoding_tick: buf.get_bits(32),
             // buffer_removal_time_length_minus_1 f(5)
-            buffer_removal_time_length_minus_1: buf.get_bits(5) as u8,
+            buffer_removal_time_length: buf.get_bits(5) as u8 + 1,
             // frame_presentation_time_length_minus_1 f(5)
-            frame_presentation_time_length_minus_1: buf.get_bits(5) as u8,
+            frame_presentation_time_length: buf.get_bits(5) as u8 + 1,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct OperatingParameters {
+pub struct OperatingParametersInfo {
     pub decoder_buffer_delay: u32,
     pub encoder_buffer_delay: u32,
     pub low_delay_mode_flag: bool,
 }
 
-impl OperatingParameters {
+impl OperatingParametersInfo {
     pub fn decode(buf: &mut Buffer<'_>, decoder_model_info: &DecoderModelInfo) -> Self {
-        let size = (decoder_model_info.buffer_delay_length_minus_1 + 1) as usize;
+        let size = decoder_model_info.buffer_delay_length as usize;
         Self {
             // decoder_buffer_delay[ op ]	f(n)
             decoder_buffer_delay: buf.get_bits(size),
@@ -103,6 +103,32 @@ impl OperatingParameters {
 }
 
 #[derive(Debug, Clone)]
+pub struct OperatingPoint {
+    pub idc: u16,
+    pub level_idx: u8,
+    pub tier: bool,
+    pub operating_parameters_info: Option<OperatingParametersInfo>,
+    pub initial_display_delay: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct FrameIdNumbersPresent {
+    pub delta_frame_id_length: u8,
+    pub additional_frame_id_length: u8,
+}
+
+impl FrameIdNumbersPresent {
+    pub fn decode(buf: &mut Buffer<'_>) -> Self {
+        Self {
+            // delta_frame_id_length_minus_2	f(4)
+            delta_frame_id_length: buf.get_bits(4) as u8,
+            // additional_frame_id_length_minus_1	f(3)
+            additional_frame_id_length: buf.get_bits(4) as u8,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SequenceHeaderObu {
     pub seq_profile: SequenceProfile,
     pub still_picture: bool,
@@ -110,17 +136,20 @@ pub struct SequenceHeaderObu {
     pub timing_info: Option<TimingInfo>,
     pub decoder_model_info: Option<DecoderModelInfo>,
     pub initial_display_delay_present_flag: bool,
-    pub operating_points_cnt_minus_1: u8,
-    pub operating_point_idc: Vec<u16>,
-    pub seq_level_idx: Vec<u8>,
-    pub seq_tier: Vec<bool>,
-    pub decoder_model_present_for_this_op: Vec<bool>,
-    pub operating_parameters_infos: Vec<OperatingParameters>,
-    pub initial_display_delay_present_for_this_op: Vec<bool>,
+    pub operating_points: Vec<OperatingPoint>,
+    pub frame_width_bits: u8,
+    pub frame_height_bits: u8,
+    pub max_frame_width: u16,
+    pub max_frame_height: u16,
+    pub frame_id_numbers_present: Option<FrameIdNumbersPresent>,
+    pub use_128x128_superblock: bool,
+    pub enable_filter_intra: bool,
+    pub enable_intra_edge_filter: bool,
+
 }
 
 impl SequenceHeaderObu {
-    pub fn decode(session: &Av1DecoderSession, buf: &mut Buffer) -> Result<Self, Av1DcodeError> {
+    pub fn decode(ctx: &Av1DecoderContext, buf: &mut Buffer) -> Result<Self, Av1DcodeError> {
         // seq_profile f(3)
         let seq_profile = SequenceProfile::try_from(buf.get_bits(3) as u8)?;
 
@@ -130,32 +159,24 @@ impl SequenceHeaderObu {
         // reduced_still_picture_header f(1)
         let reduced_still_picture_header = buf.get_bit();
 
-        let mut timing_info_present_flag = false;
         let mut timing_info = None;
-
         let mut decoder_model_info_present_flag = false;
         let mut decoder_model_info = None;
-
         let mut initial_display_delay_present_flag = false;
-        let mut operating_points_cnt_minus_1 = 0;
-        let mut operating_point_idc = Vec::with_capacity(10);
-        let mut seq_level_idx = Vec::with_capacity(10);
-        let mut seq_tier = Vec::with_capacity(10);
-
-        let mut decoder_model_present_for_this_op = Vec::with_capacity(10);
-        let mut operating_parameters_infos = Vec::with_capacity(10);
-
-        let mut initial_display_delay_present_for_this_op = Vec::with_capacity(10);
-        let mut initial_display_delay_minus_1 = Vec::with_capacity(10);
+        let mut operating_points = Vec::with_capacity(32);
 
         if reduced_still_picture_header {
-            operating_point_idc.push(0);
-
-            // seq_level_idx[ 0 ] f(5)
-            seq_level_idx[0] = buf.get_bits(5) as u8;
+            operating_points.push(OperatingPoint {
+                idc: 0,
+                // seq_level_idx[ 0 ] f(5)
+                level_idx: buf.get_bits(5) as u8,
+                tier: false,
+                operating_parameters_info: None,
+                initial_display_delay: 10,
+            });
         } else {
             // timing_info_present_flag f(1)
-            timing_info_present_flag = buf.get_bit();
+            let timing_info_present_flag = buf.get_bit();
             if timing_info_present_flag {
                 timing_info = Some(TimingInfo::decode(buf.as_mut()));
 
@@ -170,47 +191,167 @@ impl SequenceHeaderObu {
             initial_display_delay_present_flag = buf.get_bit();
 
             // operating_points_cnt_minus_1	f(5)
-            operating_points_cnt_minus_1 = buf.get_bits(5) as u8;
-
-            for i in 0..operating_points_cnt_minus_1 as usize {
+            let operating_points_cnt = buf.get_bits(5) as u8 + 1;
+            for _ in 0..operating_points_cnt as usize {
                 // operating_point_idc[ i ]	f(12)
-                operating_point_idc.push(buf.get_bits(12) as u16);
+                let idc = buf.get_bits(12) as u16;
 
                 // seq_level_idx[ i ]	f(5)
-                let v = buf.get_bits(5) as u8;
-                seq_level_idx.push(v);
-                seq_tier.push(if v > 7 {
+                let level_idx = buf.get_bits(5) as u8;
+                let tier = if level_idx > 7 {
                     // seq_tier[ i ]	f(1)
                     buf.get_bit()
                 } else {
                     false
-                });
+                };
 
+                let mut operating_parameters_info = None;
                 if decoder_model_info_present_flag {
                     // decoder_model_present_for_this_op[ i ]	f(1)
-                    let v = buf.get_bit();
-                    decoder_model_present_for_this_op.push(v);
-                    if v {
-                        operating_parameters_infos.push(OperatingParameters::decode(
+                    let ecoder_model_present = buf.get_bit();
+                    if ecoder_model_present {
+                        operating_parameters_info = Some(OperatingParametersInfo::decode(
                             buf.as_mut(),
                             &decoder_model_info.unwrap(),
                         ));
                     }
-                } else {
-                    decoder_model_present_for_this_op.push(false);
                 }
 
-                if initial_display_delay_present_flag {
+                let initial_display_delay = if initial_display_delay_present_flag {
                     // initial_display_delay_present_for_this_op[ i ]	f(1)
-                    let v = buf.get_bit();
-                    initial_display_delay_present_for_this_op.push(v);
-                    if v {
+                    let initial_display_delay_present = buf.get_bit();
+                    if initial_display_delay_present {
                         // initial_display_delay_minus_1[ i ]	f(4)
-                        initial_display_delay_minus_1.push(buf.get_bits(4) as u8);
+                        buf.get_bits(4) as u8 + 1
+                    } else {
+                        10
                     }
-                }
+                } else {
+                    10
+                };
+
+                operating_points.push(OperatingPoint {
+                    idc,
+                    level_idx,
+                    tier,
+                    operating_parameters_info,
+                    initial_display_delay,
+                });
             }
         }
+
+        let ctx_operating_point = ctx.operating_point.get();
+        ctx.operating_point_idc.set(
+            operating_points[if ctx_operating_point < operating_points.len() {
+                ctx_operating_point
+            } else {
+                0
+            }]
+            .idc,
+        );
+
+        // frame_width_bits_minus_1	f(4)
+        let frame_width_bits = buf.get_bits(4) as u8 + 1;
+
+        // frame_height_bits_minus_1	f(4)
+        let frame_height_bits = buf.get_bits(4) as u8 + 1;
+
+        // max_frame_width_minus_1	f(n)
+        let max_frame_width = buf.get_bits(frame_width_bits as usize) as u16 + 1;
+
+        // max_frame_height_minus_1	f(n)
+        let max_frame_height = buf.get_bits(frame_height_bits as usize) as u16 + 1;
+
+        let frame_id_numbers_present = if !reduced_still_picture_header {
+            // frame_id_numbers_present_flag	f(1)
+            if buf.get_bit() {
+                Some(FrameIdNumbersPresent::decode(buf.as_mut()))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // use_128x128_superblock	f(1)
+        let use_128x128_superblock = buf.get_bit();
+
+        // enable_filter_intra	f(1)
+        let enable_filter_intra = buf.get_bit();
+
+        // enable_intra_edge_filter	f(1)
+        let enable_intra_edge_filter = buf.get_bit();
+
+        let mut enable_interintra_compound = false;
+        let mut enable_masked_compound = false;
+        let mut enable_warped_motion = false;
+        let mut enable_dual_filter = false;
+        let mut enable_order_hint = false;
+        let mut enable_jnt_comp = false;
+        let mut enable_ref_frame_mvs = false;
+        let mut seq_force_screen_content_tools = SELECT_SCREEN_CONTENT_TOOLS;
+        let mut seq_force_integer_mv = SELECT_INTEGER_MV;
+
+        if reduced_still_picture_header {
+            ctx.order_hint_bits.set(0);
+        } else {
+            // enable_interintra_compound	f(1)
+            enable_interintra_compound = buf.get_bit();
+
+            // enable_masked_compound	f(1)
+            enable_masked_compound = buf.get_bit();
+
+            // enable_warped_motion	f(1)
+            enable_warped_motion = buf.get_bit();
+
+            // enable_dual_filter	f(1)
+            enable_dual_filter = buf.get_bit();
+
+            // enable_order_hint	f(1)
+            enable_order_hint = buf.get_bit();
+            if enable_order_hint {
+                // enable_jnt_comp	f(1)
+                enable_jnt_comp = buf.get_bit();
+
+                // enable_ref_frame_mvs	f(1)
+                enable_ref_frame_mvs = buf.get_bit();
+            }
+
+            // seq_choose_screen_content_tools	f(1)
+            let seq_choose_screen_content_tools = buf.get_bit();
+            if !seq_choose_screen_content_tools {
+                // seq_force_screen_content_tools	f(1)
+                seq_force_screen_content_tools = buf.get_bit() as u8;
+            }
+
+            if seq_force_screen_content_tools > 0 {
+                // seq_choose_integer_mv	f(1)
+                let seq_choose_integer_mv = buf.get_bit();
+                if !seq_choose_integer_mv {
+                    // seq_force_integer_mv	f(1)
+                    seq_force_integer_mv = buf.get_bit() as u8;
+                }
+            }
+
+            ctx.order_hint_bits.set(if enable_order_hint {
+                // order_hint_bits_minus_1	f(3)
+                buf.get_bits(3) as usize + 1
+            } else {
+                0
+            });
+        }
+
+        // enable_superres	f(1)
+        let enable_superres = buf.get_bit();
+
+        // enable_cdef	f(1)
+        let enable_cdef = buf.get_bit();
+
+        // enable_restoration	f(1)
+        let enable_restoration = buf.get_bit();
+
+        // film_grain_params_present	f(1)
+        let film_grain_params_present = buf.get_bit();
 
         Ok(Self {
             seq_profile,
@@ -219,9 +360,15 @@ impl SequenceHeaderObu {
             timing_info,
             decoder_model_info,
             initial_display_delay_present_flag,
-            operating_points_cnt_minus_1,
-            operating_point_idc,
-            seq_level_idx,
+            operating_points,
+            frame_width_bits,
+            frame_height_bits,
+            max_frame_width,
+            max_frame_height,
+            frame_id_numbers_present,
+            use_128x128_superblock,
+            enable_filter_intra,
+            enable_intra_edge_filter,
         })
     }
 }

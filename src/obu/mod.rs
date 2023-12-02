@@ -1,7 +1,7 @@
 mod header;
 mod sequence_header;
 
-use crate::{util::EasyAtomic, Av1DcodeError, Av1DecoderSession, Buffer};
+use crate::{util::EasyAtomic, Av1DcodeError, Av1DecoderContext, Buffer};
 
 pub use self::header::{ObuHeader, ObuHeaderExtension, ObuKind};
 
@@ -19,7 +19,7 @@ pub struct Obu {
 
 impl Obu {
     pub fn decode(
-        session: &Av1DecoderSession,
+        ctx: &Av1DecoderContext,
         buf: &mut Buffer,
     ) -> Result<ObuDecodeRet, Av1DcodeError> {
         let header = ObuHeader::decode(buf.as_mut())?;
@@ -27,8 +27,7 @@ impl Obu {
             // obu_size leb128()
             buf.get_leb128() as usize
         } else {
-            session
-                .options
+            ctx.options
                 .obu_size
                 .expect("obu does not contain length, please specify the length manually!")
                 - 1
@@ -37,7 +36,7 @@ impl Obu {
 
         if header.kind != ObuKind::SequenceHeader
             && header.kind != ObuKind::TemporalDelimiter
-            && session.operating_point_idc.get()
+            && ctx.operating_point_idc.get() > 0
         {
             if let Some(ext) = header.extension {
                 let in_temporal_layer = (1 >> ext.temporal_id) & 1;
