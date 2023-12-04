@@ -4,6 +4,7 @@ use crate::{buffer::Buffer, Av1DecodeError, Av1DecodeUnknownError};
 pub enum ObuKind {
     Reserved(u8),
     SequenceHeader,
+    // Note: The temporal delimiter has an empty payload.
     TemporalDelimiter,
     FrameHeader,
     TileGroup,
@@ -11,6 +12,16 @@ pub enum ObuKind {
     Frame,
     RedundantFrameHeader,
     TileList,
+    // // Note: obu_padding_length is not coded in the bitstream but can be computed based on
+    // obu_size minus the number of trailing bytes. In practice, though, since this is padding
+    // data meant to be skipped, decoders do not need to determine either that length nor the
+    // number of trailing bytes. They can ignore the entire OBU. Ignoring the OBU can be done
+    // based on obu_size. The last byte of the valid content of the payload data for this OBU type
+    // is considered to be the last byte that is not equal to zero. This rule is to prevent the
+    // dropping of valid bytes by systems that interpret trailing zero bytes as a continuation of
+    // the trailing bits in an OBU. This implies that when any payload data is present for this
+    // OBU type, at least one byte of the payload data (including the trailing bit) shall not be
+    // equal to 0.
     Padding,
 }
 

@@ -1,4 +1,5 @@
 pub mod header;
+pub mod metadata;
 pub mod sequence_header;
 
 use crate::{util::EasyAtomic, Av1DecodeError, Av1DecoderContext, Buffer};

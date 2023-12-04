@@ -16,6 +16,7 @@ pub enum Av1DecodeUnknownError {
     TransferCharacteristics,
     MatrixCoefficients,
     ChromaSamplePosition,
+    MetadataType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
