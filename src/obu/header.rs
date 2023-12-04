@@ -1,4 +1,4 @@
-use crate::{buffer::Buffer, Av1DcodeError};
+use crate::{buffer::Buffer, Av1DecodeError, Av1DecodeUnknownError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObuKind {
@@ -15,7 +15,7 @@ pub enum ObuKind {
 }
 
 impl TryFrom<u8> for ObuKind {
-    type Error = Av1DcodeError;
+    type Error = Av1DecodeError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Ok(match value {
@@ -29,7 +29,11 @@ impl TryFrom<u8> for ObuKind {
             7 => Self::RedundantFrameHeader,
             8 => Self::TileList,
             15 => Self::Padding,
-            _ => return Err(Av1DcodeError::InvalidObuHeaderKind),
+            _ => {
+                return Err(Av1DecodeError::Unknown(
+                    Av1DecodeUnknownError::ObuHeaderKind,
+                ))
+            }
         })
     }
 }
@@ -41,7 +45,7 @@ pub struct ObuHeaderExtension {
 }
 
 impl ObuHeaderExtension {
-    pub fn decode(buf: &mut Buffer<'_>) -> Result<Self, Av1DcodeError> {
+    pub fn decode(buf: &mut Buffer<'_>) -> Result<Self, Av1DecodeError> {
         // temporal_id f(3)
         let temporal_id = buf.get_bits(3) as u8;
 
@@ -66,7 +70,7 @@ pub struct ObuHeader {
 }
 
 impl ObuHeader {
-    pub fn decode(buf: &mut Buffer<'_>) -> Result<Self, Av1DcodeError> {
+    pub fn decode(buf: &mut Buffer<'_>) -> Result<Self, Av1DecodeError> {
         // obu_forbidden_bit f(1)
         buf.seek(1);
 

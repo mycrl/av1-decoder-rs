@@ -1,7 +1,7 @@
-mod header;
-mod sequence_header;
+pub mod header;
+pub mod sequence_header;
 
-use crate::{util::EasyAtomic, Av1DcodeError, Av1DecoderContext, Buffer};
+use crate::{util::EasyAtomic, Av1DecodeError, Av1DecoderContext, Buffer};
 
 pub use self::header::{ObuHeader, ObuHeaderExtension, ObuKind};
 
@@ -21,7 +21,7 @@ impl Obu {
     pub fn decode(
         ctx: &Av1DecoderContext,
         buf: &mut Buffer,
-    ) -> Result<ObuDecodeRet, Av1DcodeError> {
+    ) -> Result<ObuDecodeRet, Av1DecodeError> {
         let header = ObuHeader::decode(buf.as_mut())?;
         let size = if header.has_size_field {
             // obu_size leb128()
