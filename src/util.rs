@@ -7,50 +7,23 @@ pub trait EasyAtomic {
     fn set(&self, value: Self::Item);
 }
 
-impl EasyAtomic for AtomicBool {
-    type Item = bool;
+macro_rules! impl_easy_atomic {
+    ($a:ty, $b:ty) => {
+        impl EasyAtomic for $a {
+            type Item = $b;
 
-    fn get(&self) -> Self::Item {
-        self.load(Ordering::Relaxed)
-    }
+            fn get(&self) -> Self::Item {
+                self.load(Ordering::Relaxed)
+            }
 
-    fn set(&self, value: Self::Item) {
-        self.store(value, Ordering::Relaxed);
-    }
+            fn set(&self, value: Self::Item) {
+                self.store(value, Ordering::Relaxed);
+            }
+        }
+    };
 }
 
-impl EasyAtomic for AtomicUsize {
-    type Item = usize;
-
-    fn get(&self) -> Self::Item {
-        self.load(Ordering::Relaxed)
-    }
-
-    fn set(&self, value: Self::Item) {
-        self.store(value, Ordering::Relaxed);
-    }
-}
-
-impl EasyAtomic for AtomicU16 {
-    type Item = u16;
-
-    fn get(&self) -> Self::Item {
-        self.load(Ordering::Relaxed)
-    }
-
-    fn set(&self, value: Self::Item) {
-        self.store(value, Ordering::Relaxed);
-    }
-}
-
-impl EasyAtomic for AtomicU8 {
-    type Item = u8;
-
-    fn get(&self) -> Self::Item {
-        self.load(Ordering::Relaxed)
-    }
-
-    fn set(&self, value: Self::Item) {
-        self.store(value, Ordering::Relaxed);
-    }
-}
+impl_easy_atomic!(AtomicBool, bool);
+impl_easy_atomic!(AtomicUsize, usize);
+impl_easy_atomic!(AtomicU16, u16);
+impl_easy_atomic!(AtomicU8, u8);

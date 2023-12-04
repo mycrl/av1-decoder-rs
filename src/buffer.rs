@@ -13,10 +13,17 @@ impl<'a> Buffer<'a> {
         }
     }
 
-    pub fn seek(&mut self, cut: usize) {
+    pub fn seek_bits(&mut self, cut: usize) {
         for _ in 0..cut {
             self.advance();
         }
+    }
+
+    pub fn get_bytes(&mut self, count: usize) -> &[u8] {
+        assert_eq!(self.bit_pos, 0);
+
+        self.index += count;
+        &self.buf[self.index - count..self.index]
     }
 
     pub fn get_bit(&mut self) -> bool {

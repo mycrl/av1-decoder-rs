@@ -17,6 +17,7 @@ pub enum Av1DecodeUnknownError {
     MatrixCoefficients,
     ChromaSamplePosition,
     MetadataType,
+    ScalabilityModeIdc,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
