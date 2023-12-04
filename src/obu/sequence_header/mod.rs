@@ -1,8 +1,12 @@
+pub mod color_config;
+
 use crate::{
     constants::{SELECT_INTEGER_MV, SELECT_SCREEN_CONTENT_TOOLS},
     util::EasyAtomic,
     Av1DecodeError, Av1DecodeUnknownError, Av1DecoderContext, Buffer,
 };
+
+use self::color_config::ColorConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SequenceProfile {
@@ -149,6 +153,20 @@ pub struct SequenceHeaderObu {
     pub use_128x128_superblock: bool,
     pub enable_filter_intra: bool,
     pub enable_intra_edge_filter: bool,
+    pub enable_interintra_compound: bool,
+    pub enable_masked_compound: bool,
+    pub enable_warped_motion: bool,
+    pub enable_dual_filter: bool,
+    pub enable_order_hint: bool,
+    pub enable_jnt_comp: bool,
+    pub enable_ref_frame_mvs: bool,
+    pub seq_force_screen_content_tools: u8,
+    pub seq_force_integer_mv: u8,
+    pub enable_superres: bool,
+    pub enable_cdef: bool,
+    pub enable_restoration: bool,
+    pub color_config: ColorConfig,
+    pub film_grain_params_present: bool,
 }
 
 impl SequenceHeaderObu {
@@ -353,6 +371,8 @@ impl SequenceHeaderObu {
         // enable_restoration	f(1)
         let enable_restoration = buf.get_bit();
 
+        let color_config = ColorConfig::decode(ctx, buf, seq_profile)?;
+
         // film_grain_params_present	f(1)
         let film_grain_params_present = buf.get_bit();
 
@@ -372,255 +392,20 @@ impl SequenceHeaderObu {
             use_128x128_superblock,
             enable_filter_intra,
             enable_intra_edge_filter,
+            enable_interintra_compound,
+            enable_masked_compound,
+            enable_warped_motion,
+            enable_dual_filter,
+            enable_order_hint,
+            enable_jnt_comp,
+            enable_ref_frame_mvs,
+            seq_force_screen_content_tools,
+            seq_force_integer_mv,
+            enable_superres,
+            enable_cdef,
+            enable_restoration,
+            color_config,
+            film_grain_params_present,
         })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColorPrimaries {
-    Bt709,
-    Unspecified,
-    Bt470M,
-    Bt470BG,
-    Bt601,
-    Smpte240,
-    GenericFilm,
-    Bt2020,
-    Xyz,
-    Smpte431,
-    Smpte432,
-    Ebu3213,
-}
-
-impl TryFrom<u8> for ColorPrimaries {
-    type Error = Av1DecodeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Ok(match value {
-            1 => Self::Bt709,
-            2 => Self::Unspecified,
-            4 => Self::Bt470M,
-            5 => Self::Bt470BG,
-            6 => Self::Bt601,
-            7 => Self::Smpte240,
-            8 => Self::GenericFilm,
-            9 => Self::Bt2020,
-            10 => Self::Xyz,
-            11 => Self::Smpte431,
-            12 => Self::Smpte432,
-            22 => Self::Ebu3213,
-            _ => {
-                return Err(Av1DecodeError::Unknown(
-                    Av1DecodeUnknownError::ColorPrimaries,
-                ))
-            }
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TransferCharacteristics {
-    Bt709,
-    Unspecified,
-    Bt470M,
-    Bt470BG,
-    Bt601,
-    Smpte240,
-    Linear,
-    Log100,
-    Log100Sqrt10,
-    Iec61966,
-    Bt1361,
-    Srgb,
-    Bt202010Bit,
-    Bt202012Bit,
-    Smpte2084,
-    Smpte428,
-    Hlg,
-}
-
-impl TryFrom<u8> for TransferCharacteristics {
-    type Error = Av1DecodeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Ok(match value {
-            1 => Self::Bt709,
-            2 => Self::Unspecified,
-            4 => Self::Bt470M,
-            5 => Self::Bt470BG,
-            6 => Self::Bt601,
-            7 => Self::Smpte240,
-            8 => Self::Linear,
-            9 => Self::Log100,
-            10 => Self::Log100Sqrt10,
-            11 => Self::Iec61966,
-            12 => Self::Bt1361,
-            13 => Self::Srgb,
-            14 => Self::Bt202010Bit,
-            15 => Self::Bt202012Bit,
-            16 => Self::Smpte2084,
-            17 => Self::Smpte428,
-            18 => Self::Hlg,
-            _ => {
-                return Err(Av1DecodeError::Unknown(
-                    Av1DecodeUnknownError::TransferCharacteristics,
-                ))
-            }
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatrixCoefficients {
-    Identity,
-    Bt709,
-    Unspecified,
-    Fcc,
-    Bt470BG,
-    Bt601,
-    Smpte240,
-    SmpteYcgco,
-    Bt2020Ncl,
-    Bt2020Cl,
-    Smpte2085,
-    ChromatNcl,
-    ChromatCl,
-    Ictcp,
-}
-
-impl TryFrom<u8> for MatrixCoefficients {
-    type Error = Av1DecodeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Ok(match value {
-            0 => Self::Identity,
-            1 => Self::Bt709,
-            2 => Self::Unspecified,
-            4 => Self::Fcc,
-            5 => Self::Bt470BG,
-            6 => Self::Bt601,
-            7 => Self::Smpte240,
-            8 => Self::SmpteYcgco,
-            9 => Self::Bt2020Ncl,
-            10 => Self::Bt2020Cl,
-            11 => Self::Smpte2085,
-            12 => Self::ChromatNcl,
-            13 => Self::ChromatCl,
-            14 => Self::Ictcp,
-            _ => {
-                return Err(Av1DecodeError::Unknown(
-                    Av1DecodeUnknownError::MatrixCoefficients,
-                ))
-            }
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChromaSamplePosition {
-    Unknown,
-    Vertical,
-    Colocated,
-}
-
-impl TryFrom<u8> for ChromaSamplePosition {
-    type Error = Av1DecodeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Ok(match value {
-            0 => Self::Unknown,
-            1 => Self::Vertical,
-            2 => Self::Colocated,
-            _ => {
-                return Err(Av1DecodeError::Unknown(
-                    Av1DecodeUnknownError::ChromaSamplePosition,
-                ))
-            }
-        })
-    }
-}
-
-pub struct ColorConfig {
-    // pub high_bitdepth: bool,
-}
-
-impl ColorConfig {
-    pub fn decode(
-        ctx: &Av1DecoderContext,
-        buf: &mut Buffer,
-        profile: SequenceProfile,
-    ) -> Result<Self, Av1DecodeError> {
-        // high_bitdepth	f(1)
-        let high_bitdepth = buf.get_bit();
-
-        ctx.bit_depth.set(
-            if profile == SequenceProfile::Professional && high_bitdepth {
-                // twelve_bit	f(1)
-                let twelve_bit = buf.get_bit();
-                if twelve_bit {
-                    12
-                } else {
-                    10
-                }
-            } else {
-                if high_bitdepth {
-                    10
-                } else {
-                    8
-                }
-            },
-        );
-
-        let mono_chrome = if profile == SequenceProfile::Main {
-            false
-        } else {
-            // mono_chrome	f(1)
-            buf.get_bit()
-        };
-
-        ctx.num_planes.set(if mono_chrome { 1 } else { 3 });
-
-        // color_description_present_flag	f(1)
-        let color_description_present = buf.get_bit();
-        let (color_primaries, transfer_characteristics, matrix_coefficients) =
-            if color_description_present {
-                (
-                    // color_primaries	f(8)
-                    ColorPrimaries::try_from(buf.get_bits(8) as u8)?,
-                    // transfer_characteristics	f(8)
-                    TransferCharacteristics::try_from(buf.get_bits(8) as u8)?,
-                    // matrix_coefficients	f(8)
-                    MatrixCoefficients::try_from(buf.get_bits(8) as u8)?,
-                )
-            } else {
-                (
-                    ColorPrimaries::Unspecified,
-                    TransferCharacteristics::Unspecified,
-                    MatrixCoefficients::Unspecified,
-                )
-            };
-
-        let mut separate_uv_delta_q = false;
-        let (color_range, subsampling_x, subsampling_y, chroma_sample_position) = if mono_chrome {
-            (
-                // color_range f(1)
-                buf.get_bit(),
-                1,
-                1,
-                ChromaSamplePosition::Unknown,
-            )
-        } else if color_primaries == ColorPrimaries::Bt709
-            && transfer_characteristics == TransferCharacteristics::Srgb
-            && matrix_coefficients == MatrixCoefficients::Identity
-        {
-            (true, 0, 0)
-        } else {
-            (
-                // color_range f(1)
-                buf.get_bit(),
-            )
-        };
-
-        Ok(Self {})
     }
 }
