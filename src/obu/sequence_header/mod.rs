@@ -129,15 +129,15 @@ impl FrameIdNumbersPresent {
     pub fn decode(buf: &mut Buffer<'_>) -> Self {
         Self {
             // delta_frame_id_length_minus_2	f(4)
-            delta_frame_id_length: buf.get_bits(4) as u8,
+            delta_frame_id_length: buf.get_bits(4) as u8 + 2,
             // additional_frame_id_length_minus_1	f(3)
-            additional_frame_id_length: buf.get_bits(4) as u8,
+            additional_frame_id_length: buf.get_bits(4) as u8 + 1,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct SequenceHeaderObu {
+pub struct SequenceHeader {
     pub seq_profile: SequenceProfile,
     pub still_picture: bool,
     pub reduced_still_picture_header: bool,
@@ -169,7 +169,7 @@ pub struct SequenceHeaderObu {
     pub film_grain_params_present: bool,
 }
 
-impl SequenceHeaderObu {
+impl SequenceHeader {
     pub fn decode(ctx: &Av1DecoderContext, buf: &mut Buffer) -> Result<Self, Av1DecodeError> {
         // seq_profile f(3)
         let seq_profile = SequenceProfile::try_from(buf.get_bits(3) as u8)?;

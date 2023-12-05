@@ -3,10 +3,12 @@ mod constants;
 mod obu;
 mod util;
 
-use std::sync::atomic::{AtomicU16, AtomicU8, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU8, AtomicUsize};
 
 pub use buffer::Buffer;
+use obu::sequence_header::SequenceHeader;
 pub use obu::{Obu, ObuHeader, ObuHeaderExtension, ObuKind};
+use util::AtomicOption;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Av1DecodeUnknownError {
@@ -18,6 +20,7 @@ pub enum Av1DecodeUnknownError {
     ChromaSamplePosition,
     MetadataType,
     ScalabilityModeIdc,
+    FrameType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,4 +48,7 @@ pub struct Av1DecoderContext {
     pub order_hint_bits: AtomicUsize,
     pub bit_depth: AtomicU8,
     pub num_planes: AtomicU8,
+    pub seen_frame_header: AtomicBool,
+    pub sequence_header: AtomicOption<SequenceHeader>,
+    pub frame_is_intra: AtomicBool,
 }

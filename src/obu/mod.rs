@@ -1,9 +1,10 @@
+pub mod frame_header;
 pub mod metadata;
 pub mod sequence_header;
-pub mod frame_header;
 
-use crate::{util::EasyAtomic, Av1DecodeError, Av1DecoderContext, Buffer, Av1DecodeUnknownError};
+use crate::{util::EasyAtomic, Av1DecodeError, Av1DecodeUnknownError, Av1DecoderContext, Buffer};
 
+/// see: https://aomediacodec.github.io/av1-spec/#obu-header-semantics
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObuKind {
     Reserved(u8),
@@ -53,6 +54,7 @@ impl TryFrom<u8> for ObuKind {
     }
 }
 
+/// https://aomediacodec.github.io/av1-spec/#obu-extension-header-syntax
 #[derive(Debug, Clone, Copy)]
 pub struct ObuHeaderExtension {
     pub temporal_id: u8,
@@ -77,6 +79,7 @@ impl ObuHeaderExtension {
     }
 }
 
+/// see: https://aomediacodec.github.io/av1-spec/#obu-header-syntax
 #[derive(Debug, Clone, Copy)]
 pub struct ObuHeader {
     pub kind: ObuKind,
@@ -115,7 +118,6 @@ impl ObuHeader {
     }
 }
 
-
 pub enum ObuDecodeRet {
     Obu(Obu),
     Drop,
@@ -123,6 +125,8 @@ pub enum ObuDecodeRet {
 
 #[derive(Debug, Clone)]
 /// Open Bitstream Unit
+/// 
+/// see: https://aomediacodec.github.io/av1-spec/#obu-syntax
 pub struct Obu {
     pub header: ObuHeader,
     pub size: usize,
