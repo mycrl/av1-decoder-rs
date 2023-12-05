@@ -125,7 +125,7 @@ pub enum ObuDecodeRet {
 
 #[derive(Debug, Clone)]
 /// Open Bitstream Unit
-/// 
+///
 /// see: https://aomediacodec.github.io/av1-spec/#obu-syntax
 pub struct Obu {
     pub header: ObuHeader,
