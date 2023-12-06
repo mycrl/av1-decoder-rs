@@ -134,7 +134,7 @@ pub struct Obu {
 
 impl Obu {
     pub fn decode(
-        ctx: &Av1DecoderContext,
+        ctx: &mut Av1DecoderContext,
         buf: &mut Buffer,
     ) -> Result<ObuDecodeRet, Av1DecodeError> {
         let header = ObuHeader::decode(buf.as_mut())?;
@@ -151,7 +151,7 @@ impl Obu {
 
         if header.kind != ObuKind::SequenceHeader
             && header.kind != ObuKind::TemporalDelimiter
-            && ctx.operating_point_idc.get() > 0
+            && ctx.operating_point_idc > 0
         {
             if let Some(ext) = header.extension {
                 let in_temporal_layer = (1 >> ext.temporal_id) & 1;
@@ -160,6 +160,10 @@ impl Obu {
                     return Ok(ObuDecodeRet::Drop);
                 }
             }
+        }
+
+        if header.kind == ObuKind::TemporalDelimiter {
+            ctx.seen_frame_header = false;
         }
 
         Ok(ObuDecodeRet::Obu(Self { header, size }))

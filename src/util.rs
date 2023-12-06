@@ -26,6 +26,11 @@ macro_rules! impl_easy_atomic {
     };
 }
 
+impl_easy_atomic!(AtomicBool, bool);
+impl_easy_atomic!(AtomicUsize, usize);
+impl_easy_atomic!(AtomicU16, u16);
+impl_easy_atomic!(AtomicU8, u8);
+
 pub struct AtomicOption<T> {
     opt: AtomicPtr<T>,
 }
@@ -68,8 +73,3 @@ impl<T> AtomicOption<T> {
         )
     }
 }
-
-impl_easy_atomic!(AtomicBool, bool);
-impl_easy_atomic!(AtomicUsize, usize);
-impl_easy_atomic!(AtomicU16, u16);
-impl_easy_atomic!(AtomicU8, u8);

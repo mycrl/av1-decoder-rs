@@ -1,6 +1,5 @@
 use crate::{
     constants::{SELECT_INTEGER_MV, SELECT_SCREEN_CONTENT_TOOLS},
-    util::EasyAtomic,
     Av1DecodeError, Av1DecodeUnknownError, Av1DecoderContext, Buffer,
 };
 
@@ -186,7 +185,7 @@ pub struct ColorConfig {
 
 impl ColorConfig {
     pub fn decode(
-        ctx: &Av1DecoderContext,
+        ctx: &mut Av1DecoderContext,
         buf: &mut Buffer,
         profile: SequenceProfile,
     ) -> Result<Self, Av1DecodeError> {
@@ -194,23 +193,21 @@ impl ColorConfig {
         let high_bitdepth = buf.get_bit();
 
         let mut twelve_bit = false;
-        ctx.bit_depth.set(
-            if profile == SequenceProfile::Professional && high_bitdepth {
-                // twelve_bit	f(1)
-                twelve_bit = buf.get_bit();
-                if twelve_bit {
-                    12
-                } else {
-                    10
-                }
+        ctx.bit_depth = if profile == SequenceProfile::Professional && high_bitdepth {
+            // twelve_bit	f(1)
+            twelve_bit = buf.get_bit();
+            if twelve_bit {
+                12
             } else {
-                if high_bitdepth {
-                    10
-                } else {
-                    8
-                }
-            },
-        );
+                10
+            }
+        } else {
+            if high_bitdepth {
+                10
+            } else {
+                8
+            }
+        };
 
         let mono_chrome = if profile == SequenceProfile::Main {
             false
@@ -219,7 +216,7 @@ impl ColorConfig {
             buf.get_bit()
         };
 
-        ctx.num_planes.set(if mono_chrome { 1 } else { 3 });
+        ctx.num_planes = if mono_chrome { 1 } else { 3 };
 
         // color_description_present_flag	f(1)
         let color_description_present = buf.get_bit();
@@ -273,7 +270,7 @@ impl ColorConfig {
                 subsampling_x = false;
                 subsampling_y = false;
             } else {
-                if ctx.bit_depth.get() == 12 {
+                if ctx.bit_depth == 12 {
                     // subsampling_x	f(1)
                     subsampling_x = buf.get_bit();
                     subsampling_y = if subsampling_x {
@@ -477,7 +474,7 @@ pub struct SequenceHeader {
 }
 
 impl SequenceHeader {
-    pub fn decode(ctx: &Av1DecoderContext, buf: &mut Buffer) -> Result<Self, Av1DecodeError> {
+    pub fn decode(ctx: &mut Av1DecoderContext, buf: &mut Buffer) -> Result<Self, Av1DecodeError> {
         // seq_profile f(3)
         let seq_profile = SequenceProfile::try_from(buf.get_bits(3) as u8)?;
 
@@ -568,15 +565,13 @@ impl SequenceHeader {
             }
         }
 
-        let ctx_operating_point = ctx.operating_point.get();
-        ctx.operating_point_idc.set(
-            operating_points[if ctx_operating_point < operating_points.len() {
-                ctx_operating_point
+        ctx.operating_point_idc =
+            operating_points[if ctx.operating_point < operating_points.len() {
+                ctx.operating_point
             } else {
                 0
             }]
-            .idc,
-        );
+            .idc;
 
         // frame_width_bits_minus_1	f(4)
         let frame_width_bits = buf.get_bits(4) as u8 + 1;
@@ -621,7 +616,7 @@ impl SequenceHeader {
         let mut seq_force_integer_mv = SELECT_INTEGER_MV;
 
         if reduced_still_picture_header {
-            ctx.order_hint_bits.set(0);
+            ctx.order_hint_bits = 0;
         } else {
             // enable_interintra_compound	f(1)
             enable_interintra_compound = buf.get_bit();
@@ -661,12 +656,12 @@ impl SequenceHeader {
                 }
             }
 
-            ctx.order_hint_bits.set(if enable_order_hint {
+            ctx.order_hint_bits = if enable_order_hint {
                 // order_hint_bits_minus_1	f(3)
                 buf.get_bits(3) as usize + 1
             } else {
                 0
-            });
+            };
         }
 
         // enable_superres	f(1)

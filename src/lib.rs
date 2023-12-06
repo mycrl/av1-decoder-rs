@@ -3,12 +3,10 @@ mod constants;
 mod obu;
 mod util;
 
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU8, AtomicUsize};
-
 pub use buffer::Buffer;
-use obu::sequence_header::SequenceHeader;
+use constants::NUM_REF_FRAMES;
+use obu::{sequence_header::SequenceHeader, frame_header::FrameHeader};
 pub use obu::{Obu, ObuHeader, ObuHeaderExtension, ObuKind};
-use util::AtomicOption;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Av1DecodeUnknownError {
@@ -41,14 +39,20 @@ pub struct Av1DecoderOptions {
     pub obu_size: Option<usize>,
 }
 
+pub struct Av1DecoderContextRef {
+    pub sequence_header: SequenceHeader,
+    pub frame_header: FrameHeader,
+}
+
 pub struct Av1DecoderContext {
     pub options: Av1DecoderOptions,
-    pub operating_point_idc: AtomicU16,
-    pub operating_point: AtomicUsize,
-    pub order_hint_bits: AtomicUsize,
-    pub bit_depth: AtomicU8,
-    pub num_planes: AtomicU8,
-    pub seen_frame_header: AtomicBool,
-    pub sequence_header: AtomicOption<SequenceHeader>,
-    pub frame_is_intra: AtomicBool,
+    pub operating_point_idc: u16,
+    pub operating_point: usize,
+    pub order_hint_bits: usize,
+    pub bit_depth: u8,
+    pub num_planes: u8,
+    pub seen_frame_header: bool,
+    pub sequence_header: Option<SequenceHeader>,
+    pub frame_is_intra: bool,
+    pub refs: [Option<Av1DecoderContextRef>; NUM_REF_FRAMES as usize],
 }
