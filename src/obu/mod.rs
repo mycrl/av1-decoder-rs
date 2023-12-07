@@ -1,8 +1,9 @@
 pub mod frame_header;
 pub mod metadata;
 pub mod sequence_header;
+pub mod tile_group;
 
-use crate::{util::EasyAtomic, Av1DecodeError, Av1DecodeUnknownError, Av1DecoderContext, Buffer};
+use crate::{Av1DecodeError, Av1DecodeUnknownError, Av1DecoderContext, Buffer};
 
 /// see: https://aomediacodec.github.io/av1-spec/#obu-header-semantics
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

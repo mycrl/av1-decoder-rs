@@ -5,7 +5,7 @@ mod util;
 
 pub use buffer::Buffer;
 use constants::NUM_REF_FRAMES;
-use obu::{sequence_header::SequenceHeader, frame_header::FrameHeader};
+use obu::{frame_header::FrameHeader, sequence_header::SequenceHeader};
 pub use obu::{Obu, ObuHeader, ObuHeaderExtension, ObuKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,4 +55,6 @@ pub struct Av1DecoderContext {
     pub sequence_header: Option<SequenceHeader>,
     pub frame_is_intra: bool,
     pub refs: [Option<Av1DecoderContextRef>; NUM_REF_FRAMES as usize],
+    pub order_hint: u32,
+    pub obu_header_extension: Option<ObuHeaderExtension>,
 }
