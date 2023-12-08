@@ -57,4 +57,12 @@ pub struct Av1DecoderContext {
     pub refs: [Option<Av1DecoderContextRef>; NUM_REF_FRAMES as usize],
     pub order_hint: u32,
     pub obu_header_extension: Option<ObuHeaderExtension>,
+    pub frame_width: u16,
+    pub frame_height: u16,
+    pub superres_denom: u8,
+    pub upscaled_width: u16,
+    pub mi_cols: u32,
+    pub mi_rows: u32,
+    pub render_width: u16,
+    pub render_height: u16,
 }

@@ -1,6 +1,9 @@
 use crate::{
-    constants::{NUM_REF_FRAMES, PRIMARY_REF_NONE, SELECT_INTEGER_MV, SELECT_SCREEN_CONTENT_TOOLS},
-    obu::sequence_header::FrameIdNumbersPresent,
+    constants::{
+        NUM_REF_FRAMES, PRIMARY_REF_NONE, SELECT_INTEGER_MV, SELECT_SCREEN_CONTENT_TOOLS,
+        SUPERRES_DENOM_BITS, SUPERRES_DENOM_MIN, SUPERRES_NUM, REFS_PER_FRAME,
+    },
+    obu::sequence_header::{FrameIdNumbersPresent, SequenceHeader},
     Av1DecodeError, Av1DecodeUnknownError, Av1DecoderContext, Buffer,
 };
 
@@ -41,9 +44,132 @@ impl TemporalPointInfo {
 }
 
 #[derive(Debug, Clone)]
+pub struct FrameSize {
+    pub frame_width: Option<u16>,
+    pub frame_height: Option<u16>,
+    pub superres_params: SuperresParams,
+}
+
+impl FrameSize {
+    fn compute_image_size(ctx: &mut Av1DecoderContext) {
+        ctx.mi_cols = 2 * ((ctx.frame_width + 7) >> 3) as u32;
+        ctx.mi_rows = 2 * ((ctx.frame_height + 7) >> 3) as u32;
+    }
+
+    pub fn decode(
+        ctx: &mut Av1DecoderContext,
+        frame_size_override: bool,
+        seq_hdr: &SequenceHeader,
+        buf: &mut Buffer,
+    ) -> Self {
+        let mut frame_width = None;
+        let mut frame_height = None;
+        if frame_size_override {
+            // frame_width_minus_1	f(n)
+            let width = buf.get_bits(seq_hdr.frame_width_bits as usize) as u16 + 1;
+
+            // frame_height_minus_1	f(n)
+            let height = buf.get_bits(seq_hdr.frame_height_bits as usize) as u16 + 1;
+
+            frame_width = Some(width);
+            frame_height = Some(height);
+            ctx.frame_width = width;
+            ctx.frame_height = height;
+        } else {
+            ctx.frame_width = seq_hdr.max_frame_width;
+            ctx.frame_height = seq_hdr.max_frame_height;
+        }
+
+        let superres_params = SuperresParams::decode(ctx, seq_hdr, buf);
+        Self::compute_image_size(ctx);
+        Self {
+            frame_width,
+            frame_height,
+            superres_params,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SuperresParams {
+    pub use_superres: bool,
+    pub coded_denom: Option<u8>,
+}
+
+impl SuperresParams {
+    pub fn decode(ctx: &mut Av1DecoderContext, seq_hdr: &SequenceHeader, buf: &mut Buffer) -> Self {
+        let use_superres = if seq_hdr.enable_superres {
+            // use_superres	f(1)
+            buf.get_bit()
+        } else {
+            false
+        };
+
+        let mut coded_denom = None;
+        if use_superres {
+            // coded_denom	f(SUPERRES_DENOM_BITS)
+            let n = buf.get_bits(SUPERRES_DENOM_BITS as usize) as u8;
+            ctx.superres_denom = n + SUPERRES_DENOM_MIN;
+            coded_denom = Some(n);
+        } else {
+            ctx.superres_denom = SUPERRES_NUM;
+        };
+
+        ctx.upscaled_width = ctx.frame_width;
+        ctx.frame_width = (ctx.upscaled_width * SUPERRES_NUM as u16
+            + (ctx.superres_denom as u16 / 2))
+            / ctx.superres_denom as u16;
+
+        Self {
+            use_superres,
+            coded_denom,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RenderSize {
+    pub render_and_frame_size_different: bool,
+    pub render_width: Option<u16>,
+    pub render_height: Option<u16>,
+}
+
+impl RenderSize {
+    pub fn decode(ctx: &mut Av1DecoderContext, buf: &mut Buffer) -> Self {
+        // render_and_frame_size_different	f(1)
+        let render_and_frame_size_different = buf.get_bit();
+
+        let mut render_width = None;
+        let mut render_height = None;
+        if render_and_frame_size_different {
+            // render_width_minus_1	f(16)
+            let width = buf.get_bits(16) as u16 + 1;
+
+            // render_height_minus_1	f(16)
+            let height = buf.get_bits(16) as u16 + 1;
+
+            render_width = Some(width);
+            render_height = Some(height);
+            ctx.render_width = width;
+            ctx.render_height = height;
+        } else {
+            ctx.render_width = ctx.upscaled_width;
+            ctx.render_height = ctx.frame_height;
+        }
+
+        Self {
+            render_and_frame_size_different,
+            render_width,
+            render_height,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct UncompressedHeader {}
 
 impl UncompressedHeader {
+    // TODO
     fn mark_ref_frames(f: &FrameIdNumbersPresent, id_len: usize, current_frame_id: u32) {
         let diff_len = f.delta_frame_id_length;
         for i in 0..NUM_REF_FRAMES as usize {
@@ -195,6 +321,9 @@ impl UncompressedHeader {
         let current_frame_id = if let Some(f) = &sequence_header.frame_id_numbers_present {
             // current_frame_id	f(idLen)
             buf.get_bits(id_len)
+
+            // TODO
+            // mark_ref_frames( idLen )
         } else {
             0
         };
@@ -255,10 +384,57 @@ impl UncompressedHeader {
             buf.get_bits(8)
         };
 
+        let mut ref_order_hints = None;
         if (!ctx.frame_is_intra || refresh_frame_flags != all_frames)
             && error_resilient_mode
             && sequence_header.enable_order_hint
-        {}
+        {
+            let mut hints = [0u32; NUM_REF_FRAMES as usize];
+            for i in 0..NUM_REF_FRAMES as usize {
+                // ref_order_hint[ i ]	f(OrderHintBits)
+                hints[i] = buf.get_bits(ctx.order_hint_bits);
+            }
+
+            ref_order_hints = Some(hints);
+        }
+
+        if ctx.frame_is_intra {
+            let frame_size = FrameSize::decode(unsafe {
+                &mut *(ctx as *const Av1DecoderContext as *mut Av1DecoderContext)
+            }, frame_size_override, sequence_header, buf);
+            let render_size = RenderSize::decode(ctx, buf);
+            if allow_screen_content_tools && ctx.upscaled_width == ctx.frame_width {
+                // allow_intrabc	f(1)
+                let allow_intrabc = buf.get_bit();
+            }
+        } else {
+            let mut frame_refs_short_signaling = false;
+            if !sequence_header.enable_order_hint {
+                // frame_refs_short_signaling	f(1)
+                frame_refs_short_signaling = buf.get_bit();
+                if frame_refs_short_signaling {
+                    // last_frame_idx	f(3)
+                    let last_frame_idx = buf.get_bits(3);
+
+                    // gold_frame_idx	f(3)
+                    let gold_frame_idx = buf.get_bits(3);
+
+                    // TODO
+                    // set_frame_refs()
+                }
+            }
+
+            for _ in 0..REFS_PER_FRAME {
+                if frame_refs_short_signaling {
+                    // ref_frame_idx[ i ]	f(3)
+                    let ref_frame_idx = buf.get_bits(3);
+                }
+
+                if let Some(frame_id_numbers_present) = &sequence_header.frame_id_numbers_present {
+
+                }
+            }
+        }
 
         Ok(Self {})
     }
