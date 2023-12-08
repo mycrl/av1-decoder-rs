@@ -19,6 +19,7 @@ pub enum Av1DecodeUnknownError {
     MetadataType,
     ScalabilityModeIdc,
     FrameType,
+    InterpolationFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,4 +66,5 @@ pub struct Av1DecoderContext {
     pub mi_rows: u32,
     pub render_width: u16,
     pub render_height: u16,
+    pub delta_frame_id: u32,
 }

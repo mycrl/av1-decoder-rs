@@ -166,6 +166,57 @@ impl RenderSize {
 }
 
 #[derive(Debug, Clone)]
+pub struct FrameSizeWithRefs {
+    pub found_refs: Vec<bool>,
+}
+
+impl FrameSizeWithRefs {
+    pub fn decode(ctx: &mut Av1DecoderContext, buf: &mut Buffer) {
+        let mut found_refs = Vec::with_capacity(REFS_PER_FRAME as usize);
+        for _ in 0..REFS_PER_FRAME {
+            // found_ref	f(1)
+            found_refs.push(buf.get_bit());
+            if found_refs[found_refs.len() - 1] {
+                // UpscaledWidth = RefUpscaledWidth[ ref_frame_idx[ i ] ]	 
+                // FrameWidth = UpscaledWidth	 
+                // FrameHeight = RefFrameHeight[ ref_frame_idx[ i ] ]	 
+                // RenderWidth = RefRenderWidth[ ref_frame_idx[ i ] ]	 
+                // RenderHeight = RefRenderHeight[ ref_frame_idx[ i ] ]	 
+                // break           
+            }
+        }
+
+        // if !found_refs {
+
+        // }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterpolationFilter {
+    Eighttap,
+    EighttapSmooth,
+    EighttapSharp,
+    Bilinear,
+    Switchable,
+}
+
+impl TryFrom<u8> for InterpolationFilter {
+    type Error = Av1DecodeError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::Eighttap,
+            1 => Self::EighttapSmooth,
+            2 => Self::EighttapSharp,
+            3 => Self::Bilinear,
+            4 => Self::Switchable,
+            _ => return Err(Av1DecodeError::Unknown(Av1DecodeUnknownError::InterpolationFilter)),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct UncompressedHeader {}
 
 impl UncompressedHeader {
@@ -398,6 +449,7 @@ impl UncompressedHeader {
             ref_order_hints = Some(hints);
         }
 
+        let mut allow_intrabc = false;
         if ctx.frame_is_intra {
             let frame_size = FrameSize::decode(unsafe {
                 &mut *(ctx as *const Av1DecoderContext as *mut Av1DecoderContext)
@@ -405,7 +457,7 @@ impl UncompressedHeader {
             let render_size = RenderSize::decode(ctx, buf);
             if allow_screen_content_tools && ctx.upscaled_width == ctx.frame_width {
                 // allow_intrabc	f(1)
-                let allow_intrabc = buf.get_bit();
+                allow_intrabc = buf.get_bit();
             }
         } else {
             let mut frame_refs_short_signaling = false;
@@ -431,8 +483,18 @@ impl UncompressedHeader {
                 }
 
                 if let Some(frame_id_numbers_present) = &sequence_header.frame_id_numbers_present {
+                    let n = frame_id_numbers_present.delta_frame_id_length;
+                    // delta_frame_id_minus_1	f(n)
+                    let delta_frame_id = buf.get_bits(n as usize) + 1;
+                    ctx.delta_frame_id = delta_frame_id;
 
+                    // expectedFrameId[ i ] = ((current_frame_id + (1 << idLen) -	 
+                    // DeltaFrameId ) % (1 << idLen))
                 }
+            }
+
+            if frame_size_override && !error_resilient_mode {
+                
             }
         }
 
