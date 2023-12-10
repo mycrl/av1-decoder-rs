@@ -1,7 +1,7 @@
 use crate::{
     constants::{
-        NUM_REF_FRAMES, PRIMARY_REF_NONE, SELECT_INTEGER_MV, SELECT_SCREEN_CONTENT_TOOLS,
-        SUPERRES_DENOM_BITS, SUPERRES_DENOM_MIN, SUPERRES_NUM, REFS_PER_FRAME,
+        NUM_REF_FRAMES, PRIMARY_REF_NONE, REFS_PER_FRAME, SELECT_INTEGER_MV,
+        SELECT_SCREEN_CONTENT_TOOLS, SUPERRES_DENOM_BITS, SUPERRES_DENOM_MIN, SUPERRES_NUM,
     },
     obu::sequence_header::{FrameIdNumbersPresent, SequenceHeader},
     Av1DecodeError, Av1DecodeUnknownError, Av1DecoderContext, Buffer,
@@ -177,12 +177,12 @@ impl FrameSizeWithRefs {
             // found_ref	f(1)
             found_refs.push(buf.get_bit());
             if found_refs[found_refs.len() - 1] {
-                // UpscaledWidth = RefUpscaledWidth[ ref_frame_idx[ i ] ]	 
-                // FrameWidth = UpscaledWidth	 
-                // FrameHeight = RefFrameHeight[ ref_frame_idx[ i ] ]	 
-                // RenderWidth = RefRenderWidth[ ref_frame_idx[ i ] ]	 
-                // RenderHeight = RefRenderHeight[ ref_frame_idx[ i ] ]	 
-                // break           
+                // UpscaledWidth = RefUpscaledWidth[ ref_frame_idx[ i ] ]
+                // FrameWidth = UpscaledWidth
+                // FrameHeight = RefFrameHeight[ ref_frame_idx[ i ] ]
+                // RenderWidth = RefRenderWidth[ ref_frame_idx[ i ] ]
+                // RenderHeight = RefRenderHeight[ ref_frame_idx[ i ] ]
+                // break
             }
         }
 
@@ -211,7 +211,11 @@ impl TryFrom<u8> for InterpolationFilter {
             2 => Self::EighttapSharp,
             3 => Self::Bilinear,
             4 => Self::Switchable,
-            _ => return Err(Av1DecodeError::Unknown(Av1DecodeUnknownError::InterpolationFilter)),
+            _ => {
+                return Err(Av1DecodeError::Unknown(
+                    Av1DecodeUnknownError::InterpolationFilter,
+                ))
+            }
         })
     }
 }
@@ -451,9 +455,12 @@ impl UncompressedHeader {
 
         let mut allow_intrabc = false;
         if ctx.frame_is_intra {
-            let frame_size = FrameSize::decode(unsafe {
-                &mut *(ctx as *const Av1DecoderContext as *mut Av1DecoderContext)
-            }, frame_size_override, sequence_header, buf);
+            let frame_size = FrameSize::decode(
+                unsafe { &mut *(ctx as *const Av1DecoderContext as *mut Av1DecoderContext) },
+                frame_size_override,
+                sequence_header,
+                buf,
+            );
             let render_size = RenderSize::decode(ctx, buf);
             if allow_screen_content_tools && ctx.upscaled_width == ctx.frame_width {
                 // allow_intrabc	f(1)
@@ -488,14 +495,27 @@ impl UncompressedHeader {
                     let delta_frame_id = buf.get_bits(n as usize) + 1;
                     ctx.delta_frame_id = delta_frame_id;
 
-                    // expectedFrameId[ i ] = ((current_frame_id + (1 << idLen) -	 
-                    // DeltaFrameId ) % (1 << idLen))
+                    // expectedFrameId[ i ] = ((current_frame_id + (1 << idLen)
+                    // - DeltaFrameId ) % (1 << idLen))
                 }
             }
 
-            if frame_size_override && !error_resilient_mode {
-                
-            }
+            if frame_size_override && !error_resilient_mode {}
+        }
+
+        Ok(Self {})
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FrameHeader {}
+
+impl FrameHeader {
+    pub fn decode(ctx: &mut Av1DecoderContext, buf: &mut Buffer) -> Result<Self, Av1DecodeError> {
+        if ctx.seen_frame_header {
+            // frame_header_copy
+        } else {
+            ctx.seen_frame_header = true;
         }
 
         Ok(Self {})

@@ -1,7 +1,9 @@
+pub mod frame;
 pub mod frame_header;
 pub mod metadata;
 pub mod sequence_header;
 pub mod tile_group;
+pub mod tile_list;
 
 use crate::{Av1DecodeError, Av1DecodeUnknownError, Av1DecoderContext, Buffer};
 
