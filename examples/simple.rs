@@ -3,7 +3,7 @@ use tokio::{
     fs::OpenOptions,
     io::{AsyncReadExt, AsyncSeekExt},
 };
-use toy_rav1d::{Buffer, ObuHeader};
+use toy_rav1d::{buffer::Buffer, obu::ObuHeader};
 
 #[tokio::main]
 async fn main() {
