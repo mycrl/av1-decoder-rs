@@ -15,11 +15,7 @@
   <sup>This is an experimental project currently in progress.</sup>
 </div>
 
-***
-
 Unlike existing projects, this is an AV1 decoder implemented entirely from scratch in Rust. However, please note that this is just a side project and not intended for production use, so there is no specific focus on performance, and not all features are supported.
-
-***
 
 
 ## Roadmap
