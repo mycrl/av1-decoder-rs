@@ -40,7 +40,7 @@ Unlike existing projects, this is an AV1 decoder implemented entirely from scrat
 
 * [ ] DCT.
 * [ ] ADST.
-* [ ] Walsh Hadamard.
+* [ ] walsh hadamard.
 * [ ] CDEF.
 * [ ] loop filter.
 * [ ] motion field estimation.
@@ -53,9 +53,9 @@ Unlike existing projects, this is an AV1 decoder implemented entirely from scrat
 
 #### Public Interface
 
-* [ ] Av1 Decoder.
-* [ ] Av1 Decoder Error.
-* [ ] Obu enum.
+* [ ] av1 decoder.
+* [ ] av1 decoder error.
+* [ ] obu enum.
 
 #### Other
 
