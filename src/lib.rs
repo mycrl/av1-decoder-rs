@@ -5,8 +5,8 @@ pub mod util;
 
 use buffer::Buffer;
 use constants::NUM_REF_FRAMES;
-use obu::{frame_header::FrameHeader, sequence_header::SequenceHeader};
 use obu::ObuHeaderExtension;
+use obu::{frame_header::FrameHeader, sequence_header::SequenceHeader};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Av1DecodeUnknownError {

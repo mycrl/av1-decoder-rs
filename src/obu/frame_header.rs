@@ -3,7 +3,7 @@ use crate::{
         NUM_REF_FRAMES, PRIMARY_REF_NONE, REFS_PER_FRAME, SELECT_INTEGER_MV,
         SELECT_SCREEN_CONTENT_TOOLS, SUPERRES_DENOM_BITS, SUPERRES_DENOM_MIN, SUPERRES_NUM,
     },
-    obu::sequence_header::{FrameIdNumbersPresent, SequenceHeader},
+    obu::sequence_header::FrameIdNumbersPresent,
     Av1DecodeError, Av1DecodeUnknownError, Av1DecoderContext, Buffer,
 };
 
@@ -43,152 +43,113 @@ impl TemporalPointInfo {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FrameSize {
-    pub frame_width: Option<u16>,
-    pub frame_height: Option<u16>,
-    pub superres_params: SuperresParams,
+#[inline]
+pub fn compute_image_size(ctx: &mut Av1DecoderContext) {
+    ctx.mi_cols = 2 * ((ctx.frame_width + 7) >> 3) as u32;
+    ctx.mi_rows = 2 * ((ctx.frame_height + 7) >> 3) as u32;
 }
 
-impl FrameSize {
-    fn compute_image_size(ctx: &mut Av1DecoderContext) {
-        ctx.mi_cols = 2 * ((ctx.frame_width + 7) >> 3) as u32;
-        ctx.mi_rows = 2 * ((ctx.frame_height + 7) >> 3) as u32;
-    }
+#[inline]
+pub fn frame_size(ctx: &mut Av1DecoderContext, frame_size_override: bool, buf: &mut Buffer) {
+    let sequence_header = ctx
+        .sequence_header
+        .as_ref()
+        .expect("sequence header cannot be found, this is a undefined behavior!");
 
-    pub fn decode(
-        ctx: &mut Av1DecoderContext,
-        frame_size_override: bool,
-        seq_hdr: &SequenceHeader,
-        buf: &mut Buffer,
-    ) -> Self {
-        let mut frame_width = None;
-        let mut frame_height = None;
-        if frame_size_override {
+    let (width, height) = if frame_size_override {
+        (
             // frame_width_minus_1	f(n)
-            let width = buf.get_bits(seq_hdr.frame_width_bits as usize) as u16 + 1;
-
+            buf.get_bits(sequence_header.frame_width_bits as usize) as u16 + 1,
             // frame_height_minus_1	f(n)
-            let height = buf.get_bits(seq_hdr.frame_height_bits as usize) as u16 + 1;
+            buf.get_bits(sequence_header.frame_height_bits as usize) as u16 + 1,
+        )
+    } else {
+        (
+            sequence_header.max_frame_width,
+            sequence_header.max_frame_height,
+        )
+    };
 
-            frame_width = Some(width);
-            frame_height = Some(height);
-            ctx.frame_width = width;
-            ctx.frame_height = height;
-        } else {
-            ctx.frame_width = seq_hdr.max_frame_width;
-            ctx.frame_height = seq_hdr.max_frame_height;
-        }
+    ctx.frame_width = width;
+    ctx.frame_height = height;
 
-        let superres_params = SuperresParams::decode(ctx, seq_hdr, buf);
-        Self::compute_image_size(ctx);
-        Self {
-            frame_width,
-            frame_height,
-            superres_params,
-        }
-    }
+    superres_params(ctx, buf);
+    compute_image_size(ctx);
 }
 
-#[derive(Debug, Clone)]
-pub struct SuperresParams {
-    pub use_superres: bool,
-    pub coded_denom: Option<u8>,
+#[inline]
+pub fn superres_params(ctx: &mut Av1DecoderContext, buf: &mut Buffer) {
+    let sequence_header = ctx
+        .sequence_header
+        .as_ref()
+        .expect("sequence header cannot be found, this is a undefined behavior!");
+
+    let use_superres = if sequence_header.enable_superres {
+        // use_superres	f(1)
+        buf.get_bit()
+    } else {
+        false
+    };
+
+    ctx.superres_denom = if use_superres {
+        // coded_denom	f(SUPERRES_DENOM_BITS)
+        let coded_denom = buf.get_bits(SUPERRES_DENOM_BITS as usize) as u8;
+        coded_denom + SUPERRES_DENOM_MIN
+    } else {
+        SUPERRES_NUM
+    };
+
+    ctx.upscaled_width = ctx.frame_width;
+    ctx.frame_width = (ctx.upscaled_width * SUPERRES_NUM as u16 + (ctx.superres_denom as u16 / 2))
+        / ctx.superres_denom as u16;
 }
 
-impl SuperresParams {
-    pub fn decode(ctx: &mut Av1DecoderContext, seq_hdr: &SequenceHeader, buf: &mut Buffer) -> Self {
-        let use_superres = if seq_hdr.enable_superres {
-            // use_superres	f(1)
-            buf.get_bit()
-        } else {
-            false
-        };
-
-        let mut coded_denom = None;
-        if use_superres {
-            // coded_denom	f(SUPERRES_DENOM_BITS)
-            let n = buf.get_bits(SUPERRES_DENOM_BITS as usize) as u8;
-            ctx.superres_denom = n + SUPERRES_DENOM_MIN;
-            coded_denom = Some(n);
-        } else {
-            ctx.superres_denom = SUPERRES_NUM;
-        };
-
-        ctx.upscaled_width = ctx.frame_width;
-        ctx.frame_width = (ctx.upscaled_width * SUPERRES_NUM as u16
-            + (ctx.superres_denom as u16 / 2))
-            / ctx.superres_denom as u16;
-
-        Self {
-            use_superres,
-            coded_denom,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RenderSize {
-    pub render_and_frame_size_different: bool,
-    pub render_width: Option<u16>,
-    pub render_height: Option<u16>,
-}
-
-impl RenderSize {
-    pub fn decode(ctx: &mut Av1DecoderContext, buf: &mut Buffer) -> Self {
-        // render_and_frame_size_different	f(1)
-        let render_and_frame_size_different = buf.get_bit();
-
-        let mut render_width = None;
-        let mut render_height = None;
-        if render_and_frame_size_different {
+#[inline]
+pub fn render_size(ctx: &mut Av1DecoderContext, buf: &mut Buffer) {
+    // render_and_frame_size_different	f(1)
+    let render_and_frame_size_different = buf.get_bit();
+    let (width, height) = if render_and_frame_size_different {
+        (
             // render_width_minus_1	f(16)
-            let width = buf.get_bits(16) as u16 + 1;
-
+            buf.get_bits(16) as u16 + 1,
             // render_height_minus_1	f(16)
-            let height = buf.get_bits(16) as u16 + 1;
+            buf.get_bits(16) as u16 + 1,
+        )
+    } else {
+        (ctx.upscaled_width, ctx.frame_height)
+    };
 
-            render_width = Some(width);
-            render_height = Some(height);
-            ctx.render_width = width;
-            ctx.render_height = height;
-        } else {
-            ctx.render_width = ctx.upscaled_width;
-            ctx.render_height = ctx.frame_height;
-        }
-
-        Self {
-            render_and_frame_size_different,
-            render_width,
-            render_height,
-        }
-    }
+    ctx.render_width = width;
+    ctx.render_height = height;
 }
 
-#[derive(Debug, Clone)]
-pub struct FrameSizeWithRefs {
-    pub found_refs: Vec<bool>,
-}
+#[inline]
+pub fn frame_size_with_refs(
+    ctx: &mut Av1DecoderContext,
+    frame_size_override: bool,
+    buf: &mut Buffer,
+) {
+    let mut found_ref = false;
+    for _ in 0..REFS_PER_FRAME {
+        // found_ref	f(1)
+        found_ref = buf.get_bit();
 
-impl FrameSizeWithRefs {
-    pub fn decode(ctx: &mut Av1DecoderContext, buf: &mut Buffer) {
-        let mut found_refs = Vec::with_capacity(REFS_PER_FRAME as usize);
-        for _ in 0..REFS_PER_FRAME {
-            // found_ref	f(1)
-            found_refs.push(buf.get_bit());
-            if found_refs[found_refs.len() - 1] {
-                // UpscaledWidth = RefUpscaledWidth[ ref_frame_idx[ i ] ]
-                // FrameWidth = UpscaledWidth
-                // FrameHeight = RefFrameHeight[ ref_frame_idx[ i ] ]
-                // RenderWidth = RefRenderWidth[ ref_frame_idx[ i ] ]
-                // RenderHeight = RefRenderHeight[ ref_frame_idx[ i ] ]
-                // break
-            }
-        }
-
-        // if !found_refs {
-
+        // if ( found_ref == 1 ) {
+        //     UpscaledWidth = RefUpscaledWidth[ ref_frame_idx[ i ] ]
+        //     FrameWidth = UpscaledWidth
+        //     FrameHeight = RefFrameHeight[ ref_frame_idx[ i ] ]
+        //     RenderWidth = RefRenderWidth[ ref_frame_idx[ i ] ]
+        //     RenderHeight = RefRenderHeight[ ref_frame_idx[ i ] ]
+        //     break
         // }
+    }
+
+    if !found_ref {
+        frame_size(ctx, frame_size_override, buf);
+        render_size(ctx, buf);
+    } else {
+        superres_params(ctx, buf);
+        compute_image_size(ctx);
     }
 }
 
@@ -220,6 +181,18 @@ impl TryFrom<u8> for InterpolationFilter {
     }
 }
 
+#[inline]
+pub fn read_interpolation_filter(buf: &mut Buffer) -> Result<InterpolationFilter, Av1DecodeError> {
+    // is_filter_switchable	f(1)
+    let is_filter_switchable = buf.get_bit();
+    Ok(if is_filter_switchable {
+        InterpolationFilter::Switchable
+    } else {
+        // interpolation_filter	f(2)
+        InterpolationFilter::try_from(buf.get_bits(2) as u8)?
+    })
+}
+
 #[derive(Debug, Clone)]
 pub struct UncompressedHeader {}
 
@@ -237,7 +210,7 @@ impl UncompressedHeader {
     pub fn decode(ctx: &mut Av1DecoderContext, buf: &mut Buffer) -> Result<Self, Av1DecodeError> {
         let sequence_header = ctx
             .sequence_header
-            .as_ref()
+            .clone()
             .expect("sequence header cannot be found, this is a undefined behavior!");
 
         let mut id_len = 0;
@@ -455,13 +428,8 @@ impl UncompressedHeader {
 
         let mut allow_intrabc = false;
         if ctx.frame_is_intra {
-            let frame_size = FrameSize::decode(
-                unsafe { &mut *(ctx as *const Av1DecoderContext as *mut Av1DecoderContext) },
-                frame_size_override,
-                sequence_header,
-                buf,
-            );
-            let render_size = RenderSize::decode(ctx, buf);
+            frame_size(ctx, frame_size_override, buf);
+            render_size(ctx, buf);
             if allow_screen_content_tools && ctx.upscaled_width == ctx.frame_width {
                 // allow_intrabc	f(1)
                 allow_intrabc = buf.get_bit();
@@ -500,7 +468,54 @@ impl UncompressedHeader {
                 }
             }
 
-            if frame_size_override && !error_resilient_mode {}
+            if frame_size_override && !error_resilient_mode {
+                frame_size_with_refs(ctx, frame_size_override, buf);
+            } else {
+                frame_size(ctx, frame_size_override, buf);
+                render_size(ctx, buf);
+            }
+
+            let allow_high_precision_mv = if force_integer_mv {
+                false
+            } else {
+                // allow_high_precision_mv	f(1)
+                buf.get_bit()
+            };
+
+            let interpolation_filter = read_interpolation_filter(buf)?;
+
+            // is_motion_mode_switchable	f(1)
+            let is_motion_mode_switchable = buf.get_bit();
+            use_ref_frame_mvs = if error_resilient_mode || !sequence_header.enable_ref_frame_mvs {
+                false
+            } else {
+                // use_ref_frame_mvs	f(1)
+                buf.get_bit()
+            };
+
+            // for ( i = 0; i < REFS_PER_FRAME; i++ ) {	 
+            //     refFrame = LAST_FRAME + i	 
+            //     hint = RefOrderHint[ ref_frame_idx[ i ] ]	 
+            //     OrderHints[ refFrame ] = hint	 
+            //     if ( !enable_order_hint ) {	 
+            //         RefFrameSignBias[ refFrame ] = 0	 
+            //     } else {	 
+            //         RefFrameSignBias[ refFrame ] = get_relative_dist( hint, OrderHint) > 0	 
+            //     }	 
+            // }
+        }
+
+        let disable_frame_end_update_cdf = if sequence_header.reduced_still_picture_header || disable_cdf_update {
+            true
+        } else {
+            // disable_frame_end_update_cdf	f(1)
+            buf.get_bit()
+        };
+
+        if primary_ref_frame == PRIMARY_REF_NONE {
+
+        } else {
+            
         }
 
         Ok(Self {})
