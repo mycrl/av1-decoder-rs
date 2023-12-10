@@ -21,5 +21,47 @@ Unlike existing projects, this is an AV1 decoder implemented entirely from scrat
 
 ***
 
+
+## Roadmap
+
+#### Obu
+
+* [x] sequence header.
+* [x] metadata.
+* [ ] frame header.
+* [ ] frame.
+* [x] tile list.
+* [ ] tile group.
+* [ ] padding.
+* [ ] redundant frame header.
+* [ ] temporal delimiter.
+
+#### Reconstruction
+
+* [ ] DCT.
+* [ ] ADST.
+* [ ] Walsh Hadamard.
+* [ ] CDEF.
+* [ ] loop filter.
+* [ ] motion field estimation.
+* [ ] motion vector prediction.
+* [ ] intra prediction.
+* [ ] inter prediction.
+* [ ] box filter.
+* [ ] self guided filter.
+* [ ] wiener filter.
+
+#### Public Interface
+
+* [ ] Av1 Decoder.
+* [ ] Av1 Decoder Error.
+* [ ] Obu enum.
+
+#### Other
+
+* [ ] tests.
+* [ ] examples.
+
+
 ### License
 [GPL](./LICENSE) Copyright (c) 2023 Mr.Panda.
