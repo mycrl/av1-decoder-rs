@@ -28,8 +28,8 @@ Unlike existing projects, this is an AV1 decoder implemented entirely from scrat
 
 * [x] sequence header.
 * [x] metadata.
-* [ ] frame header.
-* [ ] frame.
+* [ ] frame header. <sup>[in progress]</sup>
+* [ ] frame. <sup>[in progress]</sup>
 * [x] tile list.
 * [ ] tile group.
 * [ ] padding.
@@ -53,14 +53,14 @@ Unlike existing projects, this is an AV1 decoder implemented entirely from scrat
 
 #### Public Interface
 
-* [ ] av1 decoder.
-* [ ] av1 decoder error.
-* [ ] obu enum.
+* [ ] av1 decoder. <sup>[in progress]</sup>
+* [ ] av1 decoder error. <sup>[in progress]</sup>
+* [ ] obu enum. <sup>[in progress]</sup>
 
 #### Other
 
 * [ ] tests.
-* [ ] examples.
+* [ ] examples. <sup>[in progress]</sup>
 
 
 ### License
